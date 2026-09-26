@@ -161,6 +161,48 @@
     },
   };
 
+  // Updatemelding: de APK komt niet uit de Play Store, dus de app kijkt zelf of er in de repo een
+  // nieuwere versie klaarstaat (downloads/versie.json, bijgewerkt bij elke nieuwe APK). Zo ja: een
+  // balk bovenaan met een downloadlink. Geen verbinding of geen bestand: stil niets tonen.
+  var UPDATE_URL = 'https://raw.githubusercontent.com/boodschapjesalert/KiteSurf/main/downloads/versie.json';
+
+  function toonUpdateBalk(info) {
+    if (document.getElementById('updateBalk')) return;
+    var balk = document.createElement('div');
+    balk.id = 'updateBalk';
+    balk.className = 'update-balk';
+    var tekst = document.createElement('span');
+    tekst.textContent = '⬆️ Nieuwe versie ' + info.versie + (info.notitie ? ': ' + info.notitie : '') + ' ';
+    var link = document.createElement('a');
+    link.href = info.url;
+    link.target = '_blank';
+    link.rel = 'noopener';
+    link.textContent = 'Download';
+    var sluit = document.createElement('button');
+    sluit.className = 'update-balk-sluit';
+    sluit.setAttribute('aria-label', 'Sluiten');
+    sluit.textContent = '×';
+    sluit.onclick = function () { balk.remove(); };
+    tekst.appendChild(link);
+    balk.appendChild(tekst);
+    balk.appendChild(sluit);
+    document.body.insertBefore(balk, document.body.firstChild);
+  }
+
+  function controleerOpUpdate() {
+    if (!config.versie || !window.fetch) return;
+    fetch(UPDATE_URL + '?t=' + Date.now(), { cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (info) {
+        if (!info || !/^https:\/\//.test(info.url || '')) return;
+        if (logica.isNieuwereAppVersie(info.versie, config.versie)) toonUpdateBalk(info);
+      })
+      .catch(function () {});
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', controleerOpUpdate);
+  else controleerOpUpdate();
+
   window.KiteweerApp = {
     isNative: !!Preferences,
     heeftWidget: !!Native,

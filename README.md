@@ -1145,6 +1145,18 @@ in `package.json` (wordt `versionName`/`versionCode`).
 toe voor de app waarmee je hem opent (browser/bestanden). Niet via de Play Store; daarvoor zijn een
 ontwikkelaarsaccount en een AAB (`./gradlew bundleRelease`) nodig.
 
+**Updates.** De app kijkt bij het openen in `downloads/versie.json` op `main` (via
+raw.githubusercontent.com) of er een nieuwere versie is (`isNieuwereAppVersie` in
+`src/logica/appVersie.js`) en toont dan bovenaan een balk met een downloadlink; de update installeert
+over de oude versie heen (instellingen blijven) zolang hij met dezelfde sleutel is ondertekend. Een
+nieuwe versie uitbrengen: `version` in `package.json` ophogen, ondertekende APK bouwen, als
+`downloads/kite-weer-app-<versie>.apk` committen en `downloads/versie.json` (versie, url, notitie)
+bijwerken — pas na de merge naar `main` zien gebruikers de melding.
+
+**Sleutelwissel 1.0.0 → 1.1.0.** De oorspronkelijke release-sleutel van 1.0.0 is niet bewaard gebleven;
+1.1.0 is met een nieuwe sleutel ondertekend. Wie 1.0.0 heeft, moet die eenmalig verwijderen en 1.1.0
+installeren (instellingen en favorieten opnieuw invullen). 1.0.0 heeft nog geen updatemelding.
+
 ## Bouwen en testen
 
 ```bash
