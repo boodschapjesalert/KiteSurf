@@ -18,7 +18,6 @@
 
   // Zelfde sleutel leest de Android-kant (KiteweerAchtergrond.java) uit "CapacitorStorage".
   var PROFIEL_SLEUTEL = 'kiteweer_profiel';
-  var CACHE_PREFIX = 'kiteweer_oordeel_';
   var API_TIMEOUT_MS = 90000;
 
   function leesOpslag(sleutel) {
@@ -91,30 +90,134 @@
       .finally(function () { if (timer) clearTimeout(timer); });
   }
 
-  function tijdNu() {
-    var d = new Date();
+  function tijdVan(ms) {
+    var d = new Date(ms);
     return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
   }
 
-  // Laatste weeroordeel per locatie bewaren, zodat de app zonder verbinding (op het strand...)
-  // nog de laatst opgehaalde voorspelling kan tonen i.p.v. alleen een foutmelding.
-  function weerOordeelMetCache(locatie) {
-    var sleutel = CACHE_PREFIX + (locatie.id || locatie.lat + ',' + locatie.lon);
-    return laadProfiel()
-      .then(function (profiel) { return api({ actie: 'weeroordeel', profiel: profiel, locatie: locatie }); })
-      .then(function (r) {
-        try { localStorage.setItem(sleutel, JSON.stringify({ tijd: tijdNu(), datum: new Date().toDateString(), r: r })); } catch (e) {}
-        return r;
-      })
-      .catch(function (fout) {
-        var bewaard = null;
-        try { bewaard = JSON.parse(localStorage.getItem(sleutel) || 'null'); } catch (e) {}
-        if (!bewaard || !bewaard.r) throw fout;
-        var r = bewaard.r;
-        r.uitCache = bewaard.datum === new Date().toDateString() ? bewaard.tijd : bewaard.tijd + ' (eerdere dag)';
-        return r;
-      });
+  function vandaagIso() {
+    var d = new Date();
+    return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
   }
+
+  // --- Weeroordelen: eerst uit de opslag, dan stil verversen --------------------------------
+  // Opslag in Capacitor Preferences (SharedPreferences "CapacitorStorage"), zodat ook de
+  // achtergrondtaak (KiteweerAchtergrond.java) er elk half uur verse oordelen in kan zetten: de
+  // app heeft dan bij het openen meestal al een actuele voorspelling. Een bewaard oordeel telt
+  // alleen als het met de huidige instellingen berekend is (logica.oordeelSleutel).
+
+  var lopend = {}; // opslagsleutel -> Promise van een lopende ophaalactie (niet dubbel ophalen)
+
+  function leesBewaard(profiel, locatie) {
+    return leesOpslag(logica.oordeelOpslagSleutel(locatie)).then(function (tekst) {
+      var bewaard = null;
+      try { bewaard = tekst ? JSON.parse(tekst) : null; } catch (e) { bewaard = null; }
+      return logica.bruikbaarBewaardOordeel(bewaard, logica.oordeelSleutel(profiel, locatie), vandaagIso());
+    });
+  }
+
+  function bewaar(profiel, locatie, dagen) {
+    var waarde = { opgehaald: Date.now(), sleutel: logica.oordeelSleutel(profiel, locatie), r: { dagen: dagen } };
+    return schrijfOpslag(logica.oordeelOpslagSleutel(locatie), JSON.stringify(waarde))
+      .catch(function () {})
+      .then(function () { return { dagen: dagen }; });
+  }
+
+  /** Verse versie ophalen en bewaren; sluit aan bij een lopende ophaalactie (bv. het voorladen). */
+  function haalOp(profiel, locatie) {
+    var sleutel = logica.oordeelOpslagSleutel(locatie);
+    function zelfOphalen() {
+      return api({ actie: 'weeroordeel', profiel: profiel, locatie: locatie })
+        .then(function (r) { return bewaar(profiel, locatie, r.dagen); });
+    }
+    if (lopend[sleutel]) return lopend[sleutel].catch(zelfOphalen);
+    var p = zelfOphalen();
+    lopend[sleutel] = p;
+    p.then(opruimen, opruimen);
+    function opruimen() { if (lopend[sleutel] === p) delete lopend[sleutel]; }
+    return p;
+  }
+
+  /**
+   * Alle favorieten waarvan geen vers oordeel bewaard is in één aanroep ophalen (actie
+   * 'weeroordelen'), zodat wisselen van locatie daarna direct is. Een backend zonder die actie
+   * (vóór v98): stil niets doen, de gekozen locatie haalt zichzelf dan gewoon op.
+   */
+  var voorladenBezig = false;
+  function voorlaadFavorieten() {
+    if (voorladenBezig) return;
+    voorladenBezig = true;
+    laadProfiel()
+      .then(function (profiel) {
+        var favorieten = (profiel.favorieteLocaties || []).filter(function (l) { return l.id; });
+        return Promise.all(favorieten.map(function (l) {
+          return leesBewaard(profiel, l).then(function (b) { return { locatie: l, bewaard: b }; });
+        })).then(function (lijst) {
+          var nodig = lijst.filter(function (x) {
+            return !logica.isOordeelVers(x.bewaard, Date.now()) && !lopend[logica.oordeelOpslagSleutel(x.locatie)];
+          }).map(function (x) { return x.locatie; });
+          if (nodig.length === 0) return null;
+
+          var batch = api({ actie: 'weeroordelen', profiel: profiel, locaties: nodig }).then(function (antwoord) {
+            var perId = {};
+            (antwoord.resultaten || []).forEach(function (r) { perId[r.locatieId] = r; });
+            return perId;
+          });
+          nodig.forEach(function (l) {
+            var sleutel = logica.oordeelOpslagSleutel(l);
+            var p = batch.then(function (perId) {
+              var r = perId[l.id];
+              if (!r || r.fout || !r.dagen) throw new Error((r && r.fout) || 'Geen weeroordeel ontvangen');
+              return bewaar(profiel, l, r.dagen);
+            });
+            lopend[sleutel] = p;
+            var opruimen = function () { if (lopend[sleutel] === p) delete lopend[sleutel]; };
+            p.then(opruimen, opruimen);
+          });
+          return batch.catch(function () {});
+        });
+      })
+      .catch(function () {})
+      .then(function () { voorladenBezig = false; });
+  }
+
+  var voorladenGepland = false;
+  function planVoorladen() {
+    if (voorladenGepland) return;
+    voorladenGepland = true;
+    setTimeout(function () { voorladenGepland = false; voorlaadFavorieten(); }, 300);
+  }
+
+  /**
+   * Weeroordeel voor het scherm (JavaScript.html kiesLocatie), in stappen:
+   *   cb.direct(r | null)  meteen: het bewaarde oordeel, of null als er niets bruikbaars is;
+   *   cb.bezig(true/false) er wordt op de achtergrond ververst;
+   *   cb.vers(r)           de verse versie (alleen als het bewaarde ouder was dan ~15 min);
+   *   cb.fout(e, tijd)     ophalen mislukt; `tijd` = van wanneer het getoonde bewaarde oordeel is.
+   */
+  function laadWeerOordeel(locatie, cb) {
+    laadProfiel()
+      .then(function (profiel) {
+        return leesBewaard(profiel, locatie).then(function (bewaard) {
+          cb.direct(bewaard ? bewaard.r : null);
+          if (logica.isOordeelVers(bewaard, Date.now())) {
+            planVoorladen();
+            return null;
+          }
+          cb.bezig(true);
+          return haalOp(profiel, locatie)
+            .then(function (r) { cb.vers(r); planVoorladen(); })
+            .catch(function (fout) { cb.fout(fout, bewaard ? tijdVan(bewaard.opgehaald) : null); })
+            .then(function () { cb.bezig(false); });
+        });
+      })
+      .catch(function (fout) { cb.fout(fout, null); });
+  }
+
+  // Terug in de app (na een tijdje op de achtergrond): favorieten alvast bijwerken.
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) planVoorladen();
+  });
 
   var functies = {
     getProfiel: function () {
@@ -148,7 +251,7 @@
       });
     },
     getWeerOordeel: function (gebruikerId, locatie) {
-      return weerOordeelMetCache(locatie);
+      return laadProfiel().then(function (profiel) { return haalOp(profiel, locatie); });
     },
     vergelijkFavorieteLocaties: function () {
       return laadProfiel().then(function (profiel) { return api({ actie: 'vergelijk', profiel: profiel }); });
@@ -207,6 +310,7 @@
     isNative: !!Preferences,
     heeftWidget: !!Native,
     versie: config.versie || '',
+    laadWeerOordeel: laadWeerOordeel,
     /** Zelfde contract als google.script.run: een Promise met het resultaat, of een fout. */
     run: function (functienaam, args) {
       var fn = functies[functienaam];

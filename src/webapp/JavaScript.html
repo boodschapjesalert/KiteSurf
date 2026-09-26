@@ -401,6 +401,10 @@
     renderFavorieten();
     toon('weerSectie');
     toonFout(null);
+    if (IS_APP && window.KiteweerApp.laadWeerOordeel) {
+      laadWeerOordeelInApp(locatie);
+      return;
+    }
     toonSkeletonKaarten();
     run('getWeerOordeel', gebruikerId, locatie)
       .then(function (r) {
@@ -412,6 +416,77 @@
         document.getElementById('dagKaarten').innerHTML = '';
         toonFout(String(e.message || e));
       });
+  }
+
+  // --- Alleen in de app: eerst de bewaarde voorspelling, dan stil verversen (src/app/app.js) ---
+  // Geen skeleton en geen wachttijd bij een locatiewissel zolang er een bewaard oordeel is; een
+  // klein "⟳ bijwerken…" naast de naam laat zien dat er op de achtergrond ververst wordt.
+  var getoondeDagen = { locatieId: null, json: null };
+
+  function toonDagenInApp(locatie, dagen) {
+    var json = JSON.stringify(dagen);
+    if (getoondeDagen.locatieId === locatie.id && getoondeDagen.json === json) return; // niets veranderd
+    // Open dagkaarten open houden als dezelfde locatie bijgewerkt wordt.
+    var open = [];
+    if (getoondeDagen.locatieId === locatie.id) {
+      document.querySelectorAll('#dagKaarten .dagkaart').forEach(function (kaart, i) {
+        var detail = kaart.querySelector('.detail');
+        if (detail && detail.classList.contains('open')) open.push(i);
+      });
+    }
+    renderDagKaarten(dagen);
+    var kaarten = document.querySelectorAll('#dagKaarten .dagkaart');
+    open.forEach(function (i) {
+      var detail = kaarten[i] && kaarten[i].querySelector('.detail');
+      if (detail) detail.classList.add('open');
+    });
+    getoondeDagen = { locatieId: locatie.id, json: json };
+  }
+
+  function zetVerversStatus(aan) {
+    var el = document.getElementById('verversStatus');
+    if (!el) {
+      el = document.createElement('span');
+      el.id = 'verversStatus';
+      el.className = 'ververs-status';
+      el.textContent = '⟳ bijwerken…';
+      document.getElementById('huidigeLocatieNaam').insertAdjacentElement('afterend', el);
+    }
+    el.hidden = !aan;
+  }
+
+  function laadWeerOordeelInApp(locatie) {
+    function isHuidig() { return huidigeLocatie === locatie; }
+    window.KiteweerApp.laadWeerOordeel(locatie, {
+      direct: function (r) {
+        if (!isHuidig()) return;
+        if (r) toonDagenInApp(locatie, r.dagen);
+        else {
+          getoondeDagen = { locatieId: null, json: null };
+          toonSkeletonKaarten();
+        }
+      },
+      bezig: function (aan) { if (isHuidig()) zetVerversStatus(aan); },
+      vers: function (r) { if (isHuidig()) toonDagenInApp(locatie, r.dagen); },
+      fout: function (e, bewaardVan) {
+        if (!isHuidig()) return;
+        if (bewaardVan) {
+          toonFout('Geen verbinding — dit is de voorspelling van ' + bewaardVan + '.');
+        } else {
+          getoondeDagen = { locatieId: null, json: null };
+          document.getElementById('dagKaarten').innerHTML = '';
+          toonFout(String(e.message || e));
+        }
+      },
+    });
+  }
+
+  // Terug in de app na een tijdje: de huidige locatie stil bijwerken (toont niets nieuws als het
+  // bewaarde oordeel nog vers is of er niets veranderd is).
+  if (IS_APP) {
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden && huidigeLocatie) laadWeerOordeelInApp(huidigeLocatie);
+    });
   }
 
   /** Skeleton-placeholders i.p.v. een lege/oude kaartenlijst tijdens het ophalen van het weeroordeel. */

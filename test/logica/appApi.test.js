@@ -8,6 +8,7 @@ const {
   verwerkAppVerzoek,
 } = require('../../src/logica/appApi');
 const { standaardProfiel } = require('../../src/logica/profielValidatie');
+const { oordeelSleutel } = require('../../src/logica/appCache');
 
 function dag(datum, kleur, score, samenvatting) {
   return {
@@ -224,6 +225,59 @@ describe('verwerkAppVerzoek', () => {
       resultaten: [{ naam: 'Zoek: Rockanje', lat: 1, lon: 2 }],
     });
     assert.deepEqual(verwerkAppVerzoek({ actie: 'deelLink' }, diensten), { url: 'https://voorbeeld/exec?id=x' });
+  });
+
+  test('weeroordeel en weeroordelen geven de cachesleutel mee (zelfde als appCache.oordeelSleutel)', () => {
+    const { diensten } = maakDiensten();
+    const profiel = normaliseerAppProfiel(standaardProfiel());
+    const locatie = profiel.favorieteLocaties[0];
+    const enkel = verwerkAppVerzoek({ actie: 'weeroordeel', profiel, locatie }, diensten);
+    assert.equal(enkel.sleutel, oordeelSleutel(profiel, locatie));
+    const batch = verwerkAppVerzoek({ actie: 'weeroordelen', profiel, locaties: [locatie] }, diensten);
+    assert.equal(batch.resultaten[0].sleutel, enkel.sleutel);
+  });
+
+  test('weeroordelen: standaard alle favorieten, fout per locatie stopt de rest niet', () => {
+    const { diensten, aanroepen } = maakDiensten({
+      dagOordelen: (profiel, locatie) => {
+        if (locatie.id === 'kapot') throw new Error('bron plat');
+        return [dag('2026-09-26', 'groen', 8)];
+      },
+    });
+    const profiel = normaliseerAppProfiel(standaardProfiel());
+    const alle = verwerkAppVerzoek({ actie: 'weeroordelen', profiel }, diensten);
+    assert.deepEqual(alle.resultaten.map((r) => r.locatieId), profiel.favorieteLocaties.map((l) => l.id));
+    assert.ok(alle.resultaten.every((r) => r.dagen.length === 1));
+
+    const gemengd = verwerkAppVerzoek({
+      actie: 'weeroordelen',
+      profiel,
+      locaties: [{ id: 'kapot', naam: 'Kapot', lat: 52, lon: 4 }, { naam: 'x', lat: 999, lon: 4 }, { id: 'goed', naam: 'Goed', lat: 51.9, lon: 4.1 }],
+    }, diensten);
+    assert.equal(gemengd.resultaten[0].fout, 'Kon weerdata niet ophalen');
+    assert.match(gemengd.resultaten[1].fout, /Ongeldige locatie/);
+    assert.equal(gemengd.resultaten[2].locatieId, 'goed');
+    assert.equal(gemengd.resultaten[2].dagen.length, 1);
+    assert.equal(aanroepen.length, 0);
+  });
+
+  test('achtergrond met metOordelen: oordelen per favoriet, één berekening gedeeld met de meldingen', () => {
+    const { diensten, aanroepen } = maakDiensten();
+    const profiel = normaliseerAppProfiel(Object.assign(standaardProfiel(), { meldingen: ALLES_AAN }));
+    const r = verwerkAppVerzoek({ actie: 'achtergrond', profiel, status: {}, metOordelen: true }, diensten);
+    assert.equal(r.oordelen.length, profiel.favorieteLocaties.length);
+    assert.ok(r.oordelen.every((o) => o.dagen && o.sleutel));
+    assert.equal(aanroepen.filter((a) => a.fn === 'dagOordelen').length, profiel.favorieteLocaties.length);
+
+    const zonderVraag = verwerkAppVerzoek({ actie: 'achtergrond', profiel, status: {} }, diensten);
+    assert.equal(zonderVraag.oordelen, undefined);
+
+    const meldingenUit = normaliseerAppProfiel(standaardProfiel());
+    meldingenUit.meldingen.dagelijkseSamenvatting = false;
+    meldingenUit.meldingen.directeAlert = false;
+    const r2 = verwerkAppVerzoek({ actie: 'achtergrond', profiel: meldingenUit, metOordelen: true }, diensten);
+    assert.equal(r2.oordelen.length, meldingenUit.favorieteLocaties.length);
+    assert.deepEqual(r2.meldingen, []);
   });
 
   test('weeroordeel: profiel verplicht, locatie gevalideerd, horizon uit het profiel', () => {

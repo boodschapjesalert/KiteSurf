@@ -7,6 +7,7 @@
 
 const { valideerEnVulProfielAan, valideerLocatie } = require('./profielValidatie');
 const { formatDatumKort, formatKleurEmoji, kleurNaarNl, formatWindTekst } = require('./telegramFormat');
+const { oordeelSleutel } = require('./appCache');
 
 const APP_DAG_LABELS = ['Vandaag', 'Morgen', 'Overmorgen'];
 
@@ -20,7 +21,10 @@ const APP_STIL_UUR_EIND_MINUUT = 7 * 60;
 // vandaag over i.p.v. alsnog te sturen.
 const SAMENVATTING_VENSTER_MINUTEN = 3 * 60;
 
-const APP_ACTIES = ['weeroordeel', 'vergelijk', 'zoekLocatie', 'deelLink', 'achtergrond'];
+const APP_ACTIES = ['weeroordeel', 'weeroordelen', 'vergelijk', 'zoekLocatie', 'deelLink', 'achtergrond'];
+
+// 'weeroordelen' in één keer: meer locaties per verzoek zou de Apps Script-looptijd oprekken.
+const MAX_LOCATIES_PER_VERZOEK = 10;
 
 function isAppStilUur(minutenNu) {
   return minutenNu >= APP_STIL_UUR_START_MINUUT || minutenNu < APP_STIL_UUR_EIND_MINUUT;
@@ -214,7 +218,20 @@ function verwerkAppVerzoek(verzoek, diensten) {
   if (verzoek.actie === 'weeroordeel') {
     const { locatie, fouten } = valideerLocatie(verzoek.locatie);
     if (!locatie) return { fout: 'Ongeldige locatie: ' + fouten.join(', ') };
-    return { dagen: diensten.dagOordelen(profiel, locatie, profiel.dagenVooruit) };
+    return { dagen: diensten.dagOordelen(profiel, locatie, profiel.dagenVooruit), sleutel: oordeelSleutel(profiel, locatie) };
+  }
+
+  // 'weeroordelen': meerdere locaties in één aanroep (standaard alle favorieten), zodat de app
+  // alles vooraf kan ophalen en een locatiewissel geen wachttijd meer kost.
+  if (verzoek.actie === 'weeroordelen') {
+    const ruw = Array.isArray(verzoek.locaties) ? verzoek.locaties : (profiel.favorieteLocaties || []);
+    return {
+      resultaten: ruw.slice(0, MAX_LOCATIES_PER_VERZOEK).map(function (ruweLocatie) {
+        const { locatie, fouten } = valideerLocatie(ruweLocatie);
+        if (!locatie) return { locatieId: ruweLocatie && ruweLocatie.id, fout: 'Ongeldige locatie: ' + fouten.join(', ') };
+        return oordeelVoorLocatie(profiel, locatie, diensten);
+      }),
+    };
   }
 
   if (verzoek.actie === 'vergelijk') {
@@ -228,6 +245,18 @@ function verwerkAppVerzoek(verzoek, diensten) {
   }
   const widgetLocatie = favorieten.filter(function (l) { return l.id === verzoek.widgetLocatieId; })[0] || favorieten[0];
 
+  // Eén keer per favoriet berekenen, gedeeld door de meldingen en (met `metOordelen`) de
+  // weeroordelen die de telefoon alvast bewaart voor de app.
+  const oordelen = {};
+  function oordeelVan(locatie) {
+    if (!oordelen[locatie.id]) oordelen[locatie.id] = oordeelVoorLocatie(profiel, locatie, diensten);
+    return oordelen[locatie.id];
+  }
+  function metEventueleOordelen(antwoord) {
+    if (verzoek.metOordelen === true) antwoord.oordelen = favorieten.map(oordeelVan);
+    return antwoord;
+  }
+
   let widget;
   try {
     widget = diensten.widget(profiel, widgetLocatie);
@@ -239,16 +268,11 @@ function verwerkAppVerzoek(verzoek, diensten) {
   if (!meldingenAan) {
     // Meldingen uit: niets berekenen, en de bestaande status ongemoeid laten (anders zou
     // weer aanzetten dezelfde dagen opnieuw melden).
-    return { widget: widget, meldingen: [], status: verzoek.status || {} };
+    return metEventueleOordelen({ widget: widget, meldingen: [], status: verzoek.status || {} });
   }
   const locaties = favorieten.map(function (locatie) {
-    let dagOordelen = null;
-    try {
-      dagOordelen = diensten.dagOordelen(profiel, locatie, profiel.dagenVooruit);
-    } catch (fout) {
-      dagOordelen = null;
-    }
-    return { locatie: locatie, dagOordelen: dagOordelen };
+    const oordeel = oordeelVan(locatie);
+    return { locatie: locatie, dagOordelen: oordeel.fout ? null : oordeel.dagen };
   });
   const tijd = diensten.nu();
   const meldingResultaat = bepaalAppMeldingen({
@@ -259,7 +283,20 @@ function verwerkAppVerzoek(verzoek, diensten) {
     minutenNu: tijd.minutenNu,
   });
 
-  return { widget: widget, meldingen: meldingResultaat.meldingen, status: meldingResultaat.status };
+  return metEventueleOordelen({ widget: widget, meldingen: meldingResultaat.meldingen, status: meldingResultaat.status });
+}
+
+/** { locatieId, sleutel, dagen } of { locatieId, fout } — een fout bij één locatie stopt de rest niet. */
+function oordeelVoorLocatie(profiel, locatie, diensten) {
+  try {
+    return {
+      locatieId: locatie.id,
+      sleutel: oordeelSleutel(profiel, locatie),
+      dagen: diensten.dagOordelen(profiel, locatie, profiel.dagenVooruit),
+    };
+  } catch (fout) {
+    return { locatieId: locatie.id, fout: 'Kon weerdata niet ophalen' };
+  }
 }
 
 module.exports = {

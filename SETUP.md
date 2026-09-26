@@ -126,7 +126,7 @@ meer).
 
 1. **Backend bijwerken** (eenmalig na deze wijziging): `npm run build`, `clasp push`,
    `clasp deploy --deploymentId …` (zie stap 1). Controleer onderin de webapp dat er
-   **v98** staat (v98: widget-data per dag voor de scrollbare grafieken).
+   **v98** staat (v98: widget-data per dag, en `weeroordelen`/`metOordelen` voor snel laden in de app).
 2. **Ondertekeningssleutel** bewaren: `kiteweer-release.keystore` + `keystore.properties` (niet in
    de repo, de repo is publiek). Lokaal: zet `keystore.properties` in `android/` en pas `storeFile`
    aan naar het pad van de keystore.

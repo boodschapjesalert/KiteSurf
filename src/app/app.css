@@ -25,3 +25,12 @@ button, .chip, .icoonknop {
   line-height: 1;
   padding: 0 4px;
 }
+
+/* "⟳ bijwerken…" naast de locatienaam terwijl de app op de achtergrond ververst. */
+.ververs-status {
+  margin: 0 auto 6px 8px;
+  font-size: 12px;
+  opacity: 0.65;
+  white-space: nowrap;
+}
+.ververs-status[hidden] { display: none; }

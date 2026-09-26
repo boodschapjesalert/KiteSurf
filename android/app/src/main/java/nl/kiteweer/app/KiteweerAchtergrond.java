@@ -38,6 +38,8 @@ public class KiteweerAchtergrond extends Worker {
     // Capacitor Preferences bewaart in SharedPreferences "CapacitorStorage" (zie src/app/app.js).
     static final String PREFS_CAPACITOR = "CapacitorStorage";
     static final String SLEUTEL_PROFIEL = "kiteweer_profiel";
+    // Zelfde prefix als appCache.OORDEEL_OPSLAG_PREFIX (src/logica/appCache.js).
+    static final String OORDEEL_PREFIX = "kiteweer_oordeel_";
 
     static final String PREFS_EIGEN = "KiteweerAchtergrond";
     static final String SLEUTEL_STATUS = "meldingStatus";
@@ -165,6 +167,9 @@ public class KiteweerAchtergrond extends Worker {
             verzoek.put("actie", "achtergrond");
             verzoek.put("profiel", profiel);
             verzoek.put("status", new JSONObject(eigen.getString(SLEUTEL_STATUS, "{}")));
+            // Meteen ook de weeroordelen van alle favorieten: die zet de app klaar, zodat hij bij
+            // het openen niet hoeft te wachten (src/app/app.js, leesBewaard).
+            verzoek.put("metOordelen", true);
 
             JSONObject antwoord = KiteweerHttp.postJson(leesApiUrl(context), verzoek);
             if (antwoord.has("fout")) {
@@ -180,6 +185,7 @@ public class KiteweerAchtergrond extends Worker {
                         .apply();
             }
             KiteweerWidget.werkAllesBij(context);
+            bewaarOordelen(context, antwoord.optJSONArray("oordelen"));
 
             JSONArray meldingen = antwoord.optJSONArray("meldingen");
             if (meldingen != null) {
@@ -199,6 +205,34 @@ public class KiteweerAchtergrond extends Worker {
             Log.w(TAG, "Onverwacht antwoord/profiel: " + e.getMessage());
             return Result.success();
         }
+    }
+
+    /**
+     * Weeroordelen in dezelfde opslag als de app (Capacitor Preferences = SharedPreferences
+     * "CapacitorStorage"), in het formaat van app.js `bewaar`: { opgehaald, sleutel, r: { dagen } }.
+     * De sleutel komt van de backend (appCache.oordeelSleutel); de app gebruikt het oordeel alleen
+     * als die klopt met de huidige instellingen.
+     */
+    static void bewaarOordelen(Context context, JSONArray oordelen) {
+        if (oordelen == null) return;
+        SharedPreferences.Editor opslag = context.getSharedPreferences(PREFS_CAPACITOR, Context.MODE_PRIVATE).edit();
+        long nu = System.currentTimeMillis();
+        for (int i = 0; i < oordelen.length(); i++) {
+            JSONObject oordeel = oordelen.optJSONObject(i);
+            if (oordeel == null || oordeel.has("fout") || oordeel.optJSONArray("dagen") == null) continue;
+            String locatieId = oordeel.optString("locatieId", "");
+            if (locatieId.isEmpty()) continue;
+            try {
+                JSONObject waarde = new JSONObject()
+                        .put("opgehaald", nu)
+                        .put("sleutel", oordeel.optString("sleutel", ""))
+                        .put("r", new JSONObject().put("dagen", oordeel.getJSONArray("dagen")));
+                opslag.putString(OORDEEL_PREFIX + locatieId, waarde.toString());
+            } catch (JSONException e) {
+                // Eén onleesbaar oordeel: overslaan, de app haalt het dan zelf op.
+            }
+        }
+        opslag.apply();
     }
 
     // --- HTTP ----------------------------------------------------------------------------------

@@ -1066,11 +1066,12 @@ Routering en validatie staan als pure, geteste logica in `src/logica/appApi.js`
 
 | actie | invoer | antwoord |
 |---|---|---|
-| `weeroordeel` | `profiel`, `locatie` | `{ dagen }` — zelfde als `getWeerOordeel` |
+| `weeroordeel` | `profiel`, `locatie` | `{ dagen, sleutel }` — zelfde als `getWeerOordeel` |
 | `vergelijk` | `profiel` | `{ locaties }` — zelfde als `vergelijkFavorieteLocaties` |
 | `zoekLocatie` | `zoekterm` | `{ resultaten }` |
 | `deelLink` | — | `{ url }` — webapp-link met een nieuw ID |
-| `achtergrond` | `profiel`, `status`, optioneel `widgetLocatieId` | `{ widget, meldingen, status }` |
+| `weeroordelen` | `profiel`, optioneel `locaties` (standaard alle favorieten, max. 10) | `{ resultaten: [{ locatieId, sleutel, dagen } of { locatieId, fout }] }` |
+| `achtergrond` | `profiel`, `status`, optioneel `widgetLocatieId`, `metOordelen` | `{ widget, meldingen, status, oordelen? }` |
 
 Het meegestuurde profiel wordt altijd opnieuw gevalideerd (`valideerEnVulProfielAan`), net als een
 profiel uit Drive. De backend bewaart niets van de app; wie de /exec-URL kent kon de weerberekening
@@ -1145,6 +1146,23 @@ in `package.json` (wordt `versionName`/`versionCode`).
 toe voor de app waarmee je hem opent (browser/bestanden). Niet via de Play Store; daarvoor zijn een
 ontwikkelaarsaccount en een AAB (`./gradlew bundleRelease`) nodig.
 
+**Snel laden (geen wachttijd bij wisselen).** De app toont altijd eerst de laatst bewaarde
+voorspelling en ververst stil op de achtergrond ("⟳ bijwerken…" naast de locatienaam):
+- Weeroordelen staan per locatie in Capacitor Preferences (`kiteweer_oordeel_<id>`, zelfde
+  SharedPreferences "CapacitorStorage" als het profiel) als `{ opgehaald, sleutel, r: { dagen } }`.
+  `sleutel` (`oordeelSleutel` in `src/logica/appCache.js`) is een vingerafdruk van instellingen +
+  locatie: na het wijzigen van instellingen telt een oud oordeel niet meer. Dagen vóór vandaag
+  vallen weg (`bruikbaarBewaardOordeel`).
+- Jonger dan 15 minuten: niet opnieuw ophalen; ouder: tonen en verversen.
+- Na de eerste locatie haalt de app alle andere favorieten in één aanroep op (actie
+  `weeroordelen`), dus wisselen is daarna direct.
+- De achtergrondtaak vraagt elk half uur met `metOordelen: true` ook de weeroordelen van alle
+  favorieten op en zet ze in dezelfde opslag (`KiteweerAchtergrond.bewaarOordelen`): bij openen is
+  de app meestal al actueel. De backend rekent die oordelen toch al voor de meldingen; gecomprimeerd
+  is het ~6 KB per locatie.
+- Zonder verbinding blijft de bewaarde voorspelling staan met "Geen verbinding — dit is de
+  voorspelling van HH:MM".
+
 **Updates.** De app kijkt bij het openen in `downloads/versie.json` op `main` (via
 raw.githubusercontent.com) of er een nieuwere versie is (`isNieuwereAppVersie` in
 `src/logica/appVersie.js`) en toont dan bovenaan een balk met een downloadlink; de update installeert
@@ -1154,8 +1172,8 @@ nieuwe versie uitbrengen: `version` in `package.json` ophogen, ondertekende APK 
 bijwerken — pas na de merge naar `main` zien gebruikers de melding.
 
 **Sleutelwissel 1.0.0 → 1.1.0.** De oorspronkelijke release-sleutel van 1.0.0 is niet bewaard gebleven;
-1.1.0 is met een nieuwe sleutel ondertekend. Wie 1.0.0 heeft, moet die eenmalig verwijderen en 1.1.0
-installeren (instellingen en favorieten opnieuw invullen). 1.0.0 heeft nog geen updatemelding.
+1.1.0 en later zijn met een nieuwe sleutel ondertekend. Wie 1.0.0 heeft, moet die eenmalig verwijderen en 1.1.0
+installeren (instellingen en favorieten opnieuw invullen); daarna updaten nieuwe versies gewoon. 1.0.0 heeft nog geen updatemelding.
 
 ## Bouwen en testen
 
