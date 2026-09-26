@@ -1,0 +1,2067 @@
+﻿<script>
+  // Client-logica van de webapp. Bewust vanilla JS: geen build-stap nodig voor de front-end,
+  // dit bestand wordt ongewijzigd door clasp gepusht (zie build.js).
+  //
+  // Geen account/login: elke gebruiker krijgt een eigen, niet-geraden ID (UUID), gegenereerd in
+  // de browser bij het eerste bezoek. Dat ID staat in de URL (?id=...) en in localStorage, zodat
+  // dezelfde link/browser later hetzelfde profiel teruggeeft. Wie de link kent, kan bij dat
+  // profiel — net als een deel-link. Zie README.md "Aannames".
+
+  var GEBRUIKER_ID_OPSLAG_SLEUTEL = 'kiteweer_gebruiker_id';
+  var ONBOARDING_GEZIEN_SLEUTEL = 'kiteweer_onboarding_gezien';
+  var gebruikerId = bepaalGebruikerId();
+  var profiel = null;
+  var huidigeLocatie = null;
+  var laatstGezochteResultaten = [];
+
+  // --- Donkere modus ---
+  // index.html zet het data-theme-attribuut al synchroon in <head> (vóór de eerste render, tegen
+  // een lichte flits) als er eerder een expliciete keuze opgeslagen is. Hier alleen het knopicoon
+  // bijwerken en de klik-toggle registreren. Zonder expliciete keuze volgt de app het systeem-
+  // thema (zie Stylesheet.html: prefers-color-scheme), vandaar de matchMedia-fallback hieronder.
+  var THEMA_OPSLAG_SLEUTEL = 'kiteweer_thema';
+
+  function isDonkerThemaActief() {
+    var expliciet = document.documentElement.getAttribute('data-theme');
+    if (expliciet === 'dark') return true;
+    if (expliciet === 'light') return false;
+    return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  }
+
+  function werkThemaKnopBij() {
+    var knop = document.getElementById('themaKnop');
+    if (knop) knop.textContent = isDonkerThemaActief() ? '☀️' : '🌙';
+  }
+
+  function wisselThema() {
+    var nieuwDonker = !isDonkerThemaActief();
+    document.documentElement.setAttribute('data-theme', nieuwDonker ? 'dark' : 'light');
+    try { localStorage.setItem(THEMA_OPSLAG_SLEUTEL, nieuwDonker ? 'donker' : 'licht'); } catch (e) {}
+    werkThemaKnopBij();
+  }
+
+  // Telegram "deep link" (t.me/<bot>?start=<payload>) — opent de bot met /start <gebruikerId>
+  // als berichttekst (zie TelegramBot.gs: verwerkTelegramBericht_), zodat de bot dít bestaande
+  // profiel aan de chat koppelt i.p.v. een nieuw, los profiel aan te maken.
+  var TELEGRAM_BOT_GEBRUIKERSNAAM = 'ShouldIKite_bot';
+  function telegramKoppelLink() {
+    return 'https://t.me/' + TELEGRAM_BOT_GEBRUIKERSNAAM + '?start=' + encodeURIComponent(gebruikerId);
+  }
+
+  function nieuwUuid() {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    // Fallback voor oudere browsers zonder crypto.randomUUID.
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+      var r = (Math.random() * 16) | 0;
+      var v = c === 'x' ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
+  }
+
+  // Let op: location.href/location.search in de client weerspiegelen de interne, instabiele
+  // iframe-URL van HtmlService — niet de bezochte /exec-URL. Het gebruikers-ID uit de URL komt
+  // daarom server-side uit doGet(e) (zie Code.gs: KITEWEER_GEBRUIKER_ID_UIT_URL), en de
+  // deel-/bookmarklink wordt opgebouwd uit KITEWEER_WEBAPP_URL, niet uit location.href.
+  function bepaalGebruikerId() {
+    if (KITEWEER_GEBRUIKER_ID_UIT_URL) {
+      localStorage.setItem(GEBRUIKER_ID_OPSLAG_SLEUTEL, KITEWEER_GEBRUIKER_ID_UIT_URL);
+      return KITEWEER_GEBRUIKER_ID_UIT_URL;
+    }
+    var uitOpslag = localStorage.getItem(GEBRUIKER_ID_OPSLAG_SLEUTEL);
+    if (uitOpslag) return uitOpslag;
+
+    var nieuw = nieuwUuid();
+    localStorage.setItem(GEBRUIKER_ID_OPSLAG_SLEUTEL, nieuw);
+    return nieuw;
+  }
+
+  function gebruikersLink() {
+    return KITEWEER_WEBAPP_URL + '?id=' + encodeURIComponent(gebruikerId);
+  }
+
+  var DREMPEL_VELDEN = [
+    { groep: 'Windsnelheid (knopen)', pad: 'windsnelheid', velden: [
+        { key: 'minimum', label: 'Minimum' },
+        { key: 'ideaalOnder', label: 'Ideaal vanaf' },
+        { key: 'ideaalBoven', label: 'Ideaal tot' },
+        { key: 'maximum', label: 'Maximum (leeg = geen)' },
+      ] },
+    { groep: 'Windvlagen (vlaagfactor)', pad: 'windvlagen', velden: [
+        { key: 'waarschuwingVlaagfactor', label: 'Waarschuwing vanaf' },
+        { key: 'maxVlaagfactor', label: 'No-go vanaf' },
+      ] },
+    { groep: 'Onweer / buien', pad: 'onweer',
+      velden: [{ key: 'neerslagWaarschuwingDrempel', label: 'Waarschuwing bij neerslagkans (0-1)' }],
+      checkbox: { key: 'hardNoGo', label: 'Onweer is altijd een no-go' } },
+    { groep: 'Langdurige regen', pad: 'langdurigeRegen', velden: [
+        { key: 'minimumUrenAchtereen', label: 'Vanaf hoeveel aaneengesloten uren' },
+        { key: 'minimumMmPerUur', label: 'Minimaal mm per uur om als "nat" te tellen' },
+      ] },
+    { groep: 'Luchttemperatuur (°C)', pad: 'luchttemperatuur',
+      velden: [{ key: 'minimumComfortabel', label: 'Comfortabel vanaf' }] },
+    { groep: 'Watertemperatuur (°C)', pad: 'watertemperatuur', velden: [
+        { key: 'minimumComfortabel', label: 'Zonder wetsuit vanaf' },
+        { key: 'minimumMetWetsuit', label: 'Met wetsuit vanaf' },
+      ] },
+    { groep: 'Golfhoogte (m)', pad: 'golfhoogte',
+      velden: [{ key: 'maximum', label: 'Maximum' }],
+      checkbox: { key: 'voorkeurGolven', label: 'Ik zoek juist golven' } },
+    { groep: 'Zicht (km)', pad: 'zicht', velden: [{ key: 'minimum', label: 'Minimum' }] },
+  ];
+
+  // Alle variabelen die de gebruiker in de score-tabel kan kiezen (zie scoreBerekening.
+  // ALLE_SCORE_CRITERIA, server-side) — hier gespiegeld voor de instellingen-UI, net als
+  // BEREKENING_HOOFDCRITERIA verderop. "Onweer" hoort hier bewust niet bij: dat werkt als
+  // hard-gate + vermenigvuldigende factor, geen gewogen optelterm. "Facultatief" is standaard het
+  // gemiddelde van luchttemperatuur/watertemperatuur/golfhoogte/zicht (zie berekenUurScore) — kies
+  // je één van die vier ook los, dan telt hij met zijn eigen gewicht mee en niet meer in dat
+  // gemiddelde (geen dubbeltelling).
+  var SCORE_GEWICHTEN_VELDEN = [
+    { key: 'windsnelheid', label: 'Windsnelheid' },
+    { key: 'windrichting', label: 'Windrichting' },
+    { key: 'windvlagen', label: 'Windvlagen' },
+    { key: 'getij', label: 'Getij' },
+    { key: 'langdurigeRegen', label: 'Langdurige regen' },
+    { key: 'facultatief', label: 'Facultatief (gemiddelde van niet apart gekozen variabelen hieronder)' },
+    { key: 'luchttemperatuur', label: 'Luchttemperatuur' },
+    { key: 'watertemperatuur', label: 'Watertemperatuur' },
+    { key: 'golfhoogte', label: 'Golfhoogte' },
+    { key: 'zicht', label: 'Zicht' },
+  ];
+  function scoreGewichtLabel(key) {
+    var veld = SCORE_GEWICHTEN_VELDEN.filter(function (v) { return v.key === key; })[0];
+    return veld ? veld.label : key;
+  }
+  // Standaardwaarden om op te "Herstellen" — moet gelijk blijven aan scoreBerekening.GEWICHTEN.
+  // Dit zijn ook precies de criteria die standaard actief staan in de tabel (de rest is optioneel
+  // toe te voegen).
+  var STANDAARD_SCORE_GEWICHTEN = {
+    windsnelheid: 0.3, windrichting: 0.2, windvlagen: 0.15, getij: 0.15, langdurigeRegen: 0.1, facultatief: 0.1,
+  };
+  // Werkkopie van profiel.scoreGewichten voor het instellingenformulier — pas op Opslaan
+  // gecommit naar `profiel`, zodat toevoegen/verwijderen in de tabel niet meteen "vast" zit als de
+  // gebruiker het paneel weer sluit zonder op te slaan (zelfde opzet als de rest van dit formulier:
+  // andere velden lezen ook pas bij Opslaan uit de DOM terug in `profiel`).
+  var werkbareScoreGewichten = null;
+
+  var DATABRON_VELDEN = [
+    { key: 'openMeteo', label: 'Open-Meteo (wind, onweer, temperatuur, golven — wereldwijd)' },
+    { key: 'buienradar', label: 'Buienradar (actuele waarneming, alleen NL)' },
+    { key: 'weerlive', label: 'Weerlive.nl (alleen NL, alleen met API-key)' },
+    { key: 'rws', label: 'Rijkswaterstaat (getij, alleen NL-kust)' },
+    { key: 'windfinder', label: 'Windfinder.com (wind + golven, alleen Rockanje/Maasvlakte)' },
+    { key: 'knmi', label: 'KNMI (officiële 10-minutenmeting van het dichtstbijzijnde station, alleen NL)' },
+  ];
+
+  function toon(id) { document.getElementById(id).hidden = false; }
+  function verberg(id) { document.getElementById(id).hidden = true; }
+
+  // Springt naar een net geopend paneel (Instellingen/Databronnen) zodat direct duidelijk is dát
+  // er iets verscheen en de gebruiker het meteen kan bekijken/aanpassen — zonder dit bleef het
+  // paneel vaak onder de vouw staan, onopgemerkt.
+  function springNaar(id) {
+    var el = document.getElementById(id);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  function toonLaad(aan) { document.getElementById('laadindicator').hidden = !aan; }
+  function toonFout(tekst) {
+    var el = document.getElementById('foutmelding');
+    if (!tekst) { el.hidden = true; return; }
+    el.textContent = '⚠️ ' + tekst;
+    el.hidden = false;
+  }
+
+  // Praat met de backend via het standaard google.script.run-mechanisme (werkt binnen de
+  // HtmlService-pagina die Code.gs serveert).
+  function run(functienaam) {
+    var args = Array.prototype.slice.call(arguments, 1);
+    return new Promise(function (resolve, reject) {
+      var runner = google.script.run
+        .withSuccessHandler(function (resultaat) {
+          if (resultaat && resultaat.fout) reject(new Error(resultaat.fout));
+          else resolve(resultaat);
+        })
+        .withFailureHandler(function (fout) { reject(fout); });
+      runner[functienaam].apply(runner, args);
+    });
+  }
+
+  // Mirror van drempelwaarden.heeftEssentieleConfiguratie() (server-side, src/logica/) — de
+  // drempels starten bewust blanco (zie README.md "Aannames"), dus de UI moet dat expliciet
+  // signaleren i.p.v. stilzwijgend met een halve/onjuiste score te tonen.
+  function heeftEssentieleConfiguratie(drempelwaarden) {
+    var w = (drempelwaarden && drempelwaarden.windsnelheid) || {};
+    var v = (drempelwaarden && drempelwaarden.windvlagen) || {};
+    return w.minimum != null && w.ideaalOnder != null && w.ideaalBoven != null &&
+      v.maxVlaagfactor != null && v.waarschuwingVlaagfactor != null;
+  }
+
+  function werkConfiguratieBannerBij() {
+    var geconfigureerd = heeftEssentieleConfiguratie(profiel.drempelwaarden);
+    document.getElementById('configuratieBanner').hidden = geconfigureerd;
+  }
+
+  function init() {
+    document.getElementById('linkBannerUrl').textContent = gebruikersLink();
+    toon('linkBanner');
+
+    toonLaad(true);
+    run('getProfiel', gebruikerId)
+      .then(function (r) {
+        profiel = r.profiel;
+        renderFavorieten();
+        werkConfiguratieBannerBij();
+        toonLaad(false);
+        // Meteen de eerste favoriete locatie openen i.p.v. te wachten tot de gebruiker zelf een
+        // chip aanklikt — dat scheelt een klik bij elk bezoek, en er staat toch al altijd
+        // minstens Rockanje/Maasvlakte als favoriet (zie profielValidatie.standaardProfiel()).
+        // kiesLocatie toont zelf een skeleton-laadstatus voor het weeroordeel.
+        if (profiel.favorieteLocaties && profiel.favorieteLocaties.length > 0) {
+          kiesLocatie(profiel.favorieteLocaties[0]);
+        }
+        // Nog niet geconfigureerd profiel (nieuwe gebruiker, of via een verse deel-link): meteen
+        // Instellingen openen i.p.v. te wachten tot iemand de configuratieBanner opmerkt en zelf op
+        // "Nu instellen" klikt — vraagt de essentiële windcriteria proactief bij het opstarten,
+        // niet alleen passief gesignaleerd. De weerkaarten laden intussen gewoon door op de
+        // achtergrond (kiesLocatie hierboven), dus zodra Instellingen weer dicht gaat staat er al
+        // een score klaar. De allereerste keer (localStorage-vlag, niet elk bezoek opnieuw) eerst
+        // de welkomstkaart tonen die uitlegt WAAROM — anders belandt iemand zonder context meteen
+        // midden in een instellingenformulier. Instellingen zelf opent pas na een klik op de
+        // welkomstkaart (zie onboardingKnop hieronder); een tweede bezoek dat nog steeds
+        // ongeconfigureerd is, slaat de kaart over en opent Instellingen meteen, zoals voorheen.
+        if (!heeftEssentieleConfiguratie(profiel.drempelwaarden)) {
+          var onboardingAlGezien = false;
+          try { onboardingAlGezien = localStorage.getItem(ONBOARDING_GEZIEN_SLEUTEL) === '1'; } catch (e) {}
+          if (onboardingAlGezien) {
+            openInstellingen();
+          } else {
+            document.getElementById('onboardingKaart').hidden = false;
+            springNaar('onboardingKaart');
+          }
+        }
+      })
+      .catch(function (e) { toonLaad(false); toonFout(String(e.message || e)); });
+  }
+
+  function renderFavorieten() {
+    var container = document.getElementById('favorieten');
+    container.innerHTML = '';
+    (profiel.favorieteLocaties || []).forEach(function (locatie) {
+      var chip = document.createElement('div');
+      chip.className = 'chip' + (huidigeLocatie && huidigeLocatie.id === locatie.id ? ' actief' : '');
+      chip.textContent = locatie.naam;
+      chip.onclick = function () { kiesLocatie(locatie); };
+      container.appendChild(chip);
+    });
+    // Vergelijken heeft pas zin vanaf 2 favorieten.
+    document.getElementById('vergelijkKnop').hidden = (profiel.favorieteLocaties || []).length < 2;
+  }
+
+  var KLEUR_RANG = { groen: 2, oranje: 1, rood: 0 };
+
+  function openVergelijk() {
+    toon('vergelijkSectie');
+    springNaar('vergelijkSectie');
+    var container = document.getElementById('vergelijkTabel');
+    container.innerHTML = '<p class="uitleg">Bezig met laden…</p>';
+    run('vergelijkFavorieteLocaties', gebruikerId)
+      .then(function (r) { renderVergelijkTabel(r.locaties); })
+      .catch(function (e) { container.innerHTML = ''; toonFout(String(e.message || e)); });
+  }
+
+  function renderVergelijkTabel(locaties) {
+    var container = document.getElementById('vergelijkTabel');
+    container.innerHTML = '';
+
+    // Beste eerst: groen boven oranje boven rood, en binnen dezelfde kleur op score — zo is "welke
+    // spot is nu het beste" meteen de bovenste rij, niet iets om zelf uit te rekenen.
+    var gesorteerd = locaties.slice().sort(function (a, b) {
+      if (a.fout || b.fout) return a.fout ? 1 : -1;
+      var rangVerschil = (KLEUR_RANG[b.kleur] || 0) - (KLEUR_RANG[a.kleur] || 0);
+      return rangVerschil !== 0 ? rangVerschil : b.score - a.score;
+    });
+
+    var lijst = document.createElement('div');
+    lijst.className = 'vergelijk-lijst';
+    gesorteerd.forEach(function (item, index) {
+      var rij = document.createElement('div');
+      rij.className = 'vergelijk-rij' + (index === 0 && !item.fout ? ' beste' : '');
+      if (item.fout) {
+        rij.innerHTML =
+          '<span class="vergelijk-naam">' + item.naam + '</span>' +
+          '<span class="uitleg" style="margin:0">' + item.fout + '</span>';
+      } else {
+        rij.innerHTML =
+          '<span class="kleurbol ' + item.kleur + '"></span>' +
+          '<span class="vergelijk-naam">' + item.naam +
+          (index === 0 ? ' <span class="vergelijk-beste-label">beste keuze</span>' : '') + '</span>' +
+          bouwWindBadgeHtml(item.ruw, true) +
+          '<span class="vergelijk-score">' + item.score + '/10</span>';
+      }
+      var locatieRef = (profiel.favorieteLocaties || []).filter(function (l) { return l.id === item.locatieId; })[0];
+      if (locatieRef) {
+        rij.onclick = function () {
+          verberg('vergelijkSectie');
+          kiesLocatie(locatieRef);
+        };
+      }
+      lijst.appendChild(rij);
+    });
+    container.appendChild(lijst);
+  }
+
+  function zoeken() {
+    var term = document.getElementById('zoekInput').value.trim();
+    if (!term) return;
+    toonLaad(true);
+    run('zoekLocatie', term)
+      .then(function (resultaten) {
+        laatstGezochteResultaten = resultaten;
+        renderZoekResultaten(resultaten);
+        toonLaad(false);
+      })
+      .catch(function (e) { toonLaad(false); toonFout(String(e.message || e)); });
+  }
+
+  function renderZoekResultaten(resultaten) {
+    var lijst = document.getElementById('zoekResultaten');
+    lijst.innerHTML = '';
+    resultaten.forEach(function (r, i) {
+      var li = document.createElement('li');
+      var span = document.createElement('span');
+      span.textContent = r.naam;
+      var knop = document.createElement('button');
+      knop.className = 'klein';
+      knop.textContent = '+ Favoriet';
+      knop.onclick = function () { toonToevoegFormulier(r); };
+      li.appendChild(span);
+      li.appendChild(knop);
+      lijst.appendChild(li);
+    });
+  }
+
+  function toonToevoegFormulier(zoekResultaat) {
+    var bestaandeVanRange = prompt(
+      'Cross-shore windrichting voor "' + zoekResultaat.naam + '"\n' +
+      'Beste richting VAN (graden, 0-360):', '200'
+    );
+    if (bestaandeVanRange === null) return;
+    var besteTot = prompt('Beste richting TOT (graden):', '260');
+    if (besteTot === null) return;
+
+    var nieuweLocatie = {
+      naam: zoekResultaat.naam,
+      lat: zoekResultaat.lat,
+      lon: zoekResultaat.lon,
+      windrichting: {
+        besteRanges: [[Number(bestaandeVanRange), Number(besteTot)]],
+        acceptabeleRanges: [],
+      },
+    };
+
+    toonLaad(true);
+    run('voegFavorieteLocatieToeServer', gebruikerId, nieuweLocatie)
+      .then(function (r) {
+        profiel = r.profiel;
+        renderFavorieten();
+        document.getElementById('zoekResultaten').innerHTML = '';
+        document.getElementById('zoekInput').value = '';
+        toonLaad(false);
+        if (r.fouten && r.fouten.length) toonFout(r.fouten.join(', '));
+      })
+      .catch(function (e) { toonLaad(false); toonFout(String(e.message || e)); });
+  }
+
+  function verwijderHuidigeLocatie() {
+    if (!huidigeLocatie) return;
+    if (!confirm('"' + huidigeLocatie.naam + '" verwijderen uit favorieten?')) return;
+    toonLaad(true);
+    run('verwijderFavorieteLocatieServer', gebruikerId, huidigeLocatie.id)
+      .then(function (r) {
+        profiel = r.profiel;
+        huidigeLocatie = null;
+        verberg('weerSectie');
+        renderFavorieten();
+        toonLaad(false);
+      })
+      .catch(function (e) { toonLaad(false); toonFout(String(e.message || e)); });
+  }
+
+  function kiesLocatie(locatie) {
+    huidigeLocatie = locatie;
+    document.getElementById('huidigeLocatieNaam').textContent = locatie.naam;
+    renderFavorieten();
+    toon('weerSectie');
+    toonFout(null);
+    toonSkeletonKaarten();
+    run('getWeerOordeel', gebruikerId, locatie)
+      .then(function (r) {
+        renderDagKaarten(r.dagen);
+      })
+      .catch(function (e) {
+        document.getElementById('dagKaarten').innerHTML = '';
+        toonFout(String(e.message || e));
+      });
+  }
+
+  /** Skeleton-placeholders i.p.v. een lege/oude kaartenlijst tijdens het ophalen van het weeroordeel. */
+  function toonSkeletonKaarten() {
+    var container = document.getElementById('dagKaarten');
+    container.innerHTML = '';
+    for (var i = 0; i < 3; i++) {
+      var skelet = document.createElement('div');
+      skelet.className = 'dagkaart skeleton';
+      skelet.innerHTML =
+        '<div class="skeleton-lijn skeleton-lijn-kort"></div>' +
+        '<div class="skeleton-lijn skeleton-lijn-lang"></div>';
+      container.appendChild(skelet);
+    }
+  }
+
+  function kleurNaarNl(kleur) { return { groen: 'Goed', oranje: 'Matig', rood: 'Niet geschikt' }[kleur] || kleur; }
+
+  // 16-punts kompas, zelfde indeling als eenheden.js (windrichtingKompas) — hier gespiegeld
+  // voor de client, net als BEREKENING_GEWICHTEN hieronder.
+  var KOMPAS_PUNTEN = ['N', 'NNO', 'NO', 'ONO', 'O', 'OZO', 'ZO', 'ZZO', 'Z', 'ZZW', 'ZW', 'WZW', 'W', 'WNW', 'NW', 'NNW'];
+  function windrichtingKompas(graden) {
+    if (graden == null) return null;
+    var g = ((graden % 360) + 360) % 360;
+    return KOMPAS_PUNTEN[Math.round(g / 22.5) % 16];
+  }
+
+  /**
+   * Directe visuele weergave van de wind (los van de go/no-go-interpretatie): een pijl die
+   * wijst in de richting waar de wind heen waait (dus 180° gedraaid t.o.v. de "komt uit"-graden),
+   * plus de knopen en het kompaslabel als zichtbare tekst. `toonVlag` (standaard true) voegt ook
+   * de windvlaag toe aan de zichtbare tekst — niet alleen in de title-tooltip (die op mobiel, geen
+   * hover, sowieso niet te zien is). Op plekken met een eigen "Vlaag"-kolom (de Tabel-weergave)
+   * wordt `toonVlag: false` gebruikt om dubbele vlaag-info te voorkomen. `toonEenheid` (standaard
+   * true) laat de " kn"-eenheid achter de zichtbare tekst weg — gebruikt in de Tabel-weergave, waar
+   * de eenheid al in de kolomkop staat (op gebruikersverzoek); de title-tooltip blijft wel altijd
+   * de volledige eenheid vermelden.
+   */
+  function bouwWindBadgeHtml(ruw, toonVlag, toonEenheid) {
+    if (!ruw || ruw.windKnopen == null) {
+      return '<span class="windbadge windbadge-onbekend">–</span>';
+    }
+    var kn = Math.round(ruw.windKnopen);
+    var kompas = windrichtingKompas(ruw.windrichtingGraden);
+    var eenheidTekst = toonEenheid !== false ? ' kn' : '';
+    var vlaagTekst = (toonVlag !== false && ruw.windvlaagKnopen != null) ? ' (vlagen ' + Math.round(ruw.windvlaagKnopen) + ' kn)' : '';
+    var titel = 'Wind: ' + kn + ' kn' +
+      (kompas != null ? ' uit ' + kompas + ' (' + Math.round(ruw.windrichtingGraden) + '°)' : '') +
+      (ruw.windvlaagKnopen != null ? ', vlagen ' + Math.round(ruw.windvlaagKnopen) + ' kn' : '');
+    var pijlHtml = '';
+    if (ruw.windrichtingGraden != null) {
+      var rotatie = (ruw.windrichtingGraden + 180) % 360;
+      // Schaal de pijl mee met de windkracht (los van rotatie) — zo is windkracht in één oogopslag
+      // zichtbaar (groter = harder), niet alleen als getal.
+      var schaal = Math.max(0.7, Math.min(1.6, 0.6 + kn / 40));
+      pijlHtml =
+        '<svg class="windpijl" viewBox="0 0 24 24" style="transform: rotate(' + rotatie + 'deg) scale(' + schaal.toFixed(2) + ')">' +
+        '<path d="M12 2 L18 15 L12 11 L6 15 Z"></path></svg>';
+    }
+    return (
+      '<span class="windbadge" title="' + titel.replace(/"/g, '&quot;') + '">' + pijlHtml +
+      '<span class="windkn">' + kn + eenheidTekst + (kompas != null ? ' ' + kompas : '') + vlaagTekst + '</span></span>'
+    );
+  }
+
+  /**
+   * Directe visuele weergave van het getij (los van de voorkeur-evaluatie in evaluaties.getij,
+   * die zonder ingestelde voorkeur altijd "geen-voorkeur" toont): de feitelijke hoog/laag-status
+   * plus waterstand in cm, altijd zichtbaar zolang RWS-getijdata beschikbaar is voor deze locatie.
+   * `toonEenheid` (standaard true) laat "cm" achter de zichtbare tekst weg — gebruikt in de
+   * Tabel-weergave, waar de eenheid al in de kolomkop staat; de title-tooltip blijft wel altijd de
+   * volledige eenheid vermelden.
+   */
+  function bouwGetijBadgeHtml(ruw, toonEenheid) {
+    if (!ruw || ruw.getijStatus == null) {
+      // Sinds WeerData.gs vanaf het begin van vandaag (i.p.v. "nu") opvraagt, dekt RWS bijna de
+      // volledige 3 dagen; dit blijft alleen leeg als de locatie buiten RWS-bereik ligt (>30 km
+      // van een geverifieerd-actief station) of voor het uiterste eind van de horizon.
+      return '<span class="getijbadge getijbadge-onbekend" title="Geen getij-data (buiten RWS-bereik, of het uiterste eind van de voorspellingshorizon)">🌊 –</span>';
+    }
+    var icoon = ruw.getijStatus === 'hoog' ? '🌊↑' : '🌊↓';
+    var eenheidTekst = toonEenheid !== false ? 'cm' : '';
+    var cmTekst = ruw.waterstandCm != null ? ' ' + Math.round(ruw.waterstandCm) + eenheidTekst : '';
+    var titel = 'Getij: ' + ruw.getijStatus + (ruw.waterstandCm != null ? ' (' + Math.round(ruw.waterstandCm) + ' cm)' : '');
+    return '<span class="getijbadge" title="' + titel.replace(/"/g, '&quot;') + '">' + icoon + cmTekst + '</span>';
+  }
+
+  /**
+   * Directe visuele weergave van bewolking/neerslag/onweer — voorheen nergens zichtbaar (alleen
+   * intern gebruikt voor de score: onweer als harde no-go, neerslagkans als waarschuwings-factor,
+   * bewolking helemaal niet). Het 🌇-icoon bij zonsondergang is bewust geen weersindicatie — dat
+   * toont alleen het tíjdstip van zonsondergang, elke dag, ongeacht bewolking/regen.
+   * Prioriteit: onweer (hard no-go) > hoge neerslagkans > bewolking (zon/wolk-icoon naar gelang %).
+   */
+  function bouwWeerBadgeHtml(ruw) {
+    if (!ruw) return '<span class="weerbadge weerbadge-onbekend">–</span>';
+    if (ruw.onweerAanwezig) {
+      return '<span class="weerbadge weerbadge-onweer" title="Onweer aanwezig of voorspeld">⛈️</span>';
+    }
+    if (ruw.neerslagKans != null && ruw.neerslagKans >= 0.3) {
+      var kansTekst = Math.round(ruw.neerslagKans * 100) + '%';
+      return '<span class="weerbadge" title="Neerslagkans: ' + kansTekst + '">🌧️ ' + kansTekst + '</span>';
+    }
+    if (ruw.bewolkingPercent != null) {
+      var pct = Math.round(ruw.bewolkingPercent);
+      var wolkIcoon = pct < 25 ? '☀️' : pct < 60 ? '🌤️' : pct < 85 ? '⛅' : '☁️';
+      return '<span class="weerbadge" title="Bewolking: ' + pct + '%">' + wolkIcoon + ' ' + pct + '%</span>';
+    }
+    return '<span class="weerbadge weerbadge-onbekend" title="Geen bewolkings-/neerslagdata">–</span>';
+  }
+
+  /** Voor de grafiek-tooltip: zelfde info als bouwWeerBadgeHtml, als los tekstfragment. */
+  function bouwWeerTooltipTekst(ruw) {
+    if (!ruw) return '';
+    if (ruw.onweerAanwezig) return ', onweer';
+    if (ruw.neerslagKans != null && ruw.neerslagKans >= 0.3) return ', neerslagkans ' + Math.round(ruw.neerslagKans * 100) + '%';
+    if (ruw.bewolkingPercent != null) return ', bewolking ' + Math.round(ruw.bewolkingPercent) + '%';
+    return '';
+  }
+
+  function formatTijd(iso) {
+    return new Date(iso).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  /**
+   * Piepklein lijngrafiekje van het scoreverloop over de dag (binnen het grafiek-venster,
+   * zelfde uren als bouwUurGrafiek), zichtbaar op de ingeklapte dagkaart — zodat je zonder
+   * uitklikken al ziet of de dag één piek heeft of over meerdere uren goed blijft.
+   */
+  function bouwSparklineSvg(uurResultaten) {
+    var zichtbaar = (uurResultaten || []).filter(function (u) {
+      var uur = new Date(u.tijdstip).getHours();
+      return uur >= GRAFIEK_START_UUR && uur <= GRAFIEK_EIND_UUR;
+    });
+    if (zichtbaar.length < 2) return '';
+    var stapX = 100 / (zichtbaar.length - 1);
+    var punten = zichtbaar.map(function (u, i) {
+      var score = Math.max(0, Math.min(10, u.score || 0));
+      var x = i * stapX;
+      var y = 100 - (score / 10) * 100;
+      return x.toFixed(1) + ',' + y.toFixed(1);
+    }).join(' ');
+    return (
+      '<svg class="sparkline" viewBox="0 0 100 100" preserveAspectRatio="none">' +
+      '<polyline points="' + punten + '"></polyline></svg>'
+    );
+  }
+
+  // Vanaf de 5e dag (index 4) is de voorspelling een indicatie; zelfde grens als telegramFormat.js.
+  var INDICATIEF_VANAF_DAGINDEX = 4;
+
+  function renderDagKaarten(dagen) {
+    var container = document.getElementById('dagKaarten');
+    container.innerHTML = '';
+    // De radar toont de actuele situatie (nu + 2 uur vooruit), dus alleen zinvol bij de dag van
+    // vandaag — bij morgen/overmorgen zou hij misleidend "nu" tonen bij een toekomstige datum.
+    var vandaagDatum = new Date().toISOString().slice(0, 10);
+    // Radarbeelden alvast binnenhalen zodra de kaarten staan: het tabblad kost ~1,3 MB en dat
+    // wil je niet pas ophalen op het moment dat iemand erop klikt. Zie voorlaadRadar.
+    voorlaadRadar(huidigeLocatie);
+    dagen.forEach(function (dag, index) {
+      var locatieVoorRadar = dag.datum === vandaagDatum ? huidigeLocatie : null;
+      var kaart = document.createElement('div');
+      // Kleur niet meer alleen via het kleine bolletje: een gekleurde rand + subtiele tint over de
+      // hele kaart maakt het go/no-go-signaal in één oogopslag steviger zichtbaar.
+      kaart.className = 'dagkaart dagkaart-' + dag.dagScore.kleur;
+
+      var rij = document.createElement('div');
+      rij.className = 'dagkaart-rij';
+      rij.innerHTML =
+        '<span><span class="kleurbol ' + dag.dagScore.kleur + '"></span>' +
+        '<span class="datum">' + formatDatum(dag.datum) + '</span> — ' + kleurNaarNl(dag.dagScore.kleur) +
+        (index >= INDICATIEF_VANAF_DAGINDEX ? ' <span class="indicatief" title="Vanaf de 5e dag lopen de weermodellen enkele knopen uiteen: zie dit als indicatie.">indicatief</span>' : '') +
+        '</span>' +
+        bouwSparklineSvg(dag.dagScore.uurResultaten) +
+        '<span class="score">' + dag.dagScore.score + '/10</span>';
+
+      var besteUurRuw = dag.dagScore.besteUur ? dag.dagScore.besteUur.ruw : null;
+      var metaRij = document.createElement('div');
+      metaRij.className = 'dagkaart-meta';
+      metaRij.innerHTML =
+        bouwWindBadgeHtml(besteUurRuw) +
+        bouwWeerBadgeHtml(besteUurRuw) +
+        bouwGetijBadgeHtml(besteUurRuw) +
+        '<span class="zonsondergang" title="Zonsondergang (geen weersindicatie — alleen het tijdstip)">🌇 ' +
+        (dag.zonsondergang ? formatTijd(dag.zonsondergang) : '–') + '</span>';
+
+      var detail = document.createElement('div');
+      detail.className = 'detail';
+      detail.appendChild(bouwDetail(dag.dagScore, dag.windBronnen, locatieVoorRadar, dag.meetpunten));
+      if (index >= INDICATIEF_VANAF_DAGINDEX) {
+        var indicatiefUitleg = document.createElement('p');
+        indicatiefUitleg.className = 'uitleg';
+        indicatiefUitleg.textContent =
+          'Indicatief: hoe verder vooruit, hoe minder zeker. Vanaf de 5e dag verschillen de weermodellen gemiddeld enkele knopen, ' +
+          'dus reken op een bandbreedte in plaats van een vaste waarde en kijk de dag ervoor nog eens.';
+        detail.appendChild(indicatiefUitleg);
+      }
+
+      rij.onclick = function () { detail.classList.toggle('open'); };
+      kaart.appendChild(rij);
+      kaart.appendChild(metaRij);
+
+      // Samenvattende zin (server-side opgebouwd, zie src/logica/dagSamenvatting.js) direct op de
+      // ingeklapte kaart: de kern in één regel, zonder de grafiek te hoeven interpreteren.
+      if (dag.samenvatting) {
+        var samenvattingEl = document.createElement('div');
+        samenvattingEl.className = 'dagkaart-samenvatting';
+        samenvattingEl.textContent = dag.samenvatting;
+        kaart.appendChild(samenvattingEl);
+      }
+
+      kaart.appendChild(detail);
+      container.appendChild(kaart);
+    });
+  }
+
+  function formatDatum(iso) {
+    var d = new Date(iso + 'T12:00:00');
+    return d.toLocaleDateString('nl-NL', { weekday: 'short', day: 'numeric', month: 'short' });
+  }
+
+  // Interne broncodes (zie forecastSamenstellen.windBronnenVanDag) -> leesbare Nederlandse labels,
+  // voor de transparantie-regel in bouwDetail (welke bronnen droegen daadwerkelijk bij aan de
+  // wind-inschatting van déze dag — verder vooruit vallen bronnen met een kortere eigen horizon
+  // vanzelf weg, zie de uitleg bij ⚙️ Instellingen -> Voorspellingshorizon).
+  var WIND_BRON_LABELS = {
+    'open-meteo': 'Open-Meteo',
+    'dwd-brightsky': 'DWD (reservebron)',
+    'knmi-waarneming': 'KNMI (meting)',
+    buienradar: 'Buienradar',
+    weerlive: 'Weerlive',
+    windfinder: 'Windfinder',
+    'rws-wind-verwachting': 'RWS',
+    'rws-wind-meting': 'RWS (actueel)',
+  };
+
+  function formatWindBronnenTekst(bronCodes) {
+    var labels = [];
+    (bronCodes || []).forEach(function (code) {
+      var label = WIND_BRON_LABELS[code] || code;
+      if (labels.indexOf(label) === -1) labels.push(label);
+    });
+    return labels.length ? labels.join(', ') : 'geen';
+  }
+
+  // Regenradar-instellingen. Het kader toont ongeveer 160 x 120 km rond de spot.
+  var RADAR_ZOOM = 8;            // OSM-tegelzoom; hierop blijft de kaart scherp (~0,38 km/px)
+  var RADAR_TEGEL_PX = 256;
+  var RADAR_GRID = 4;            // 4x4 tegels rond de spot — ruim genoeg voor het zichtbare kader
+  var RADAR_STAP_MIN = 10;       // minuten tussen twee frames
+  var RADAR_HORIZON_MIN = 150;   // hoe ver vooruit; boven ~170 min weigert de bron met een HTTP 400
+
+  // Het radarbeeld van Buienradar beslaat een vast gebied. Buienradar documenteert die hoeken
+  // nergens, en ze zijn niet te raden: ze zijn hier vastgesteld door van zowel het radarbeeld als
+  // van OpenStreetMap een land/zee-masker te maken en de verschuiving met de grootste overlap te
+  // zoeken. Die zoektocht komt uit op nul pixels verschuiving, dus het beeld valt samen met de
+  // kaart tot op minder dan één beeldpixel (~1,3 km). Zie README.md "Radar".
+  var RADAR_BEELD = { lonW: -0.0363, lonE: 10.1331, latN: 55.0055, latS: 49.2013, w: 550, h: 512 };
+
+  /** Web-Mercator pixelpositie binnen het globale rooster van die zoom (fractioneel). */
+  function mercatorPixel(lat, lon, zoom) {
+    var n = RADAR_TEGEL_PX * Math.pow(2, zoom);
+    var r = (lat * Math.PI) / 180;
+    return {
+      x: ((lon + 180) / 360) * n,
+      y: ((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * n,
+    };
+  }
+
+  /**
+   * De frames: vanaf het laatst gepubliceerde beeld tot RADAR_HORIZON_MIN vooruit.
+   *
+   * `vooruitMin` is bewust de stap binnen de reeks (0, 10, 20, ...) en niet het verschil met de
+   * echte klok. Buienradar publiceert alleen op hele 5 minuten, dus frame 0 is tot 5 minuten oud;
+   * ten opzichte van "nu" zou de eerste sprong dan bijvoorbeeld +7 zijn en de rest +10, wat er
+   * uitziet als een fout terwijl de beelden keurig 10 minuten uit elkaar liggen. Het getoonde
+   * kloktijdstip blijft exact, dus er gaat geen informatie verloren.
+   */
+  function radarFrameTijden() {
+    // Afronden omlaag op 5 minuten: een tijdstempel dat nog niet gepubliceerd is, levert geen beeld.
+    var start = Math.floor(Date.now() / (5 * 60000)) * 5 * 60000;
+    var lijst = [];
+    for (var m = 0; m <= RADAR_HORIZON_MIN; m += RADAR_STAP_MIN) {
+      lijst.push({ tijd: new Date(start + m * 60000), vooruitMin: m });
+    }
+    return lijst;
+  }
+
+  /** Buienradar verwacht de tijdstempel in UTC, als yyyyMMddHHmm. */
+  function radarTijdstempel(datum) {
+    function tc(n) { return (n < 10 ? '0' : '') + n; }
+    return (
+      datum.getUTCFullYear() + tc(datum.getUTCMonth() + 1) + tc(datum.getUTCDate()) +
+      tc(datum.getUTCHours()) + tc(datum.getUTCMinutes())
+    );
+  }
+
+  var radarFrameGeheugen = null;
+
+  /**
+   * De framelijst, gedeeld tussen het voorladen en het opbouwen van het tabblad. Gememoiseerd per
+   * 5-minutenblok: zonder dat zou het tabblad een paar minuten ná het voorladen andere
+   * tijdstempels berekenen — andere URL's, dus een lege cache en alsnog wachten.
+   */
+  function radarFramesVoor() {
+    var blok = Math.floor(Date.now() / (5 * 60000));
+    if (!radarFrameGeheugen || radarFrameGeheugen.blok !== blok) {
+      radarFrameGeheugen = { blok: blok, tijden: radarFrameTijden() };
+    }
+    return radarFrameGeheugen.tijden;
+  }
+
+  /** Tegelraster rond een willekeurig middelpunt, met een instelbaar rastergrootte. */
+  function radarKaartOpzetVoor_(lat, lon, grid) {
+    var spot = mercatorPixel(lat, lon, RADAR_ZOOM);
+    var tx0 = Math.floor(spot.x / RADAR_TEGEL_PX) - Math.floor(grid / 2);
+    var ty0 = Math.floor(spot.y / RADAR_TEGEL_PX) - Math.floor(grid / 2);
+    return {
+      spot: spot,
+      tx0: tx0,
+      ty0: ty0,
+      grid: grid,
+      oorsprong: { x: tx0 * RADAR_TEGEL_PX, y: ty0 * RADAR_TEGEL_PX },
+    };
+  }
+
+  /** Tegelraster en spotpositie rond een locatie — gedeeld door voorladen en opbouwen. */
+  function radarKaartOpzet(locatie) {
+    return radarKaartOpzetVoor_(locatie.lat, locatie.lon, RADAR_GRID);
+  }
+
+  function radarTegelUrl(x, y) {
+    return 'https://tile.openstreetmap.org/' + RADAR_ZOOM + '/' + x + '/' + y + '.png';
+  }
+
+  function radarBeeldUrl(frame) {
+    return (
+      'https://image.buienradar.nl/2.0/image/single/RadarMapRainNL?w=' + RADAR_BEELD.w +
+      '&h=' + RADAR_BEELD.h + '&renderBackground=false&renderBranding=false&renderText=false' +
+      '&timestamp=' + radarTijdstempel(frame.tijd)
+    );
+  }
+
+  /**
+   * De "Heel Nederland"-weergave (zie renderRadarGeografie_) gebruikt bewust NIET onze eigen
+   * OSM-tegels + uitgezoomde/geschaalde reconstructie — een eerdere versie deed dat wél, en dat
+   * bleek er merkbaar anders uit te zien dan de vertrouwde buienradar.nl-weergave (gebruikersrapport:
+   * "lijkt wel een ander type kaart"). In plaats daarvan hetzelfde endpoint als radarBeeldUrl, maar
+   * dan ZONDER de render-uitzet-parameters — dat geeft Buienradar's eigen volledige beeld terug
+   * (provinciegrenzen, plaatsnaam-stipjes, tijdstempel, groen/blauw kaartkleuren), exact de
+   * "standaard buienradar view" waar de gebruiker om vroeg. Geen tegels/transform nodig: dit ene
+   * beeld IS de hele kaart al. `breedte`/`hoogte` worden voor de zekerheid nog meegegeven, maar de
+   * bron negeert ze in de praktijk (bevestigd via de redirect-Location-header, die altijd naar een
+   * vast "..._550x512_..." bestand wijst) en toont zelf altijd hetzelfde gebied — inclusief een flink
+   * stuk Engeland/België/Duitsland eromheen (gebruikersrapport: "erg ver uitgezoomd"). Vandaar de
+   * bijsnijding via CSS in plaats van hier: zie .radar-beeld-vol in Stylesheet.html.
+   */
+  function radarBeeldUrlVolledig_(frame, breedte, hoogte) {
+    return (
+      'https://image.buienradar.nl/2.0/image/single/RadarMapRainNL?w=' + Math.round(breedte) +
+      '&h=' + Math.round(hoogte) + '&timestamp=' + radarTijdstempel(frame.tijd)
+    );
+  }
+
+  // Referenties vasthouden zolang het voorladen loopt: een Image zonder referentie mag de browser
+  // opruimen vóórdat hij binnen is, en dan was het werk voor niets.
+  var radarVoorlading = [];
+
+  /**
+   * Haalt de radarbeelden en kaarttegels alvast op zodra de dagkaarten staan, zodat het
+   * Radar-tabblad meteen opent in plaats van op het moment van klikken ~1,3 MB te moeten wachten.
+   *
+   * Dit werkt alleen omdat beide bronnen een cachebare respons sturen — dat is nagemeten:
+   * Buienradar geeft `Cache-Control: public, max-age=300` (precies het 5-minutenvenster waarop de
+   * frames liggen) en OpenStreetMap ruim een week. De voorlading vult dus echt de browsercache en
+   * het tabblad haalt niets opnieuw op.
+   */
+  function voorlaadRadar(locatie) {
+    if (!locatie) return;
+    // Niet ongevraagd megabytes verstoken bij een databundel-besparing of een trage verbinding:
+    // daar is het voorladen juist schadelijk voor wat de gebruiker wél op het scherm wil.
+    var verbinding = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+    if (verbinding && (verbinding.saveData || /(^|-)2g$/.test(verbinding.effectiveType || ''))) return;
+
+    var opzet = radarKaartOpzet(locatie);
+    var frames = radarFramesVoor();
+    // Volgorde is bewust: éérst het beeld van nu, want dat is wat het tabblad als eerste toont.
+    // Daarna de kaarttegels (klein, en zonder kaart is het radarbeeld nietszeggend) en pas als
+    // laatste de rest van de vooruitblik, die alleen de animatie nodig heeft.
+    var urls = [radarBeeldUrl(frames[0])];
+    for (var dy = 0; dy < RADAR_GRID; dy++) {
+      for (var dx = 0; dx < RADAR_GRID; dx++) urls.push(radarTegelUrl(opzet.tx0 + dx, opzet.ty0 + dy));
+    }
+    frames.slice(1).forEach(function (frame) { urls.push(radarBeeldUrl(frame)); });
+
+    radarVoorlading = [];
+    var volgende = 0;
+    function laadVolgende() {
+      if (volgende >= urls.length) return;
+      var afbeelding = new Image();
+      afbeelding.onload = afbeelding.onerror = laadVolgende;
+      afbeelding.src = urls[volgende++];
+      radarVoorlading.push(afbeelding);
+    }
+    // Hooguit vier tegelijk, en pas als de browser even niets te doen heeft: het weeroordeel en de
+    // zichtbare kaarten houden voorrang. requestIdleCallback kent niet elke browser, vandaar de
+    // terugval op een korte vertraging.
+    function start() { for (var i = 0; i < 4; i++) laadVolgende(); }
+    if (window.requestIdleCallback) window.requestIdleCallback(start, { timeout: 2000 });
+    else setTimeout(start, 1200);
+  }
+
+  /** "+45 min" / "+1u15" — hoe ver een frame vooruit kijkt. */
+  function formatVooruitblik(minuten) {
+    if (minuten < 60) return '+' + minuten + ' min';
+    var uren = Math.floor(minuten / 60);
+    var rest = minuten % 60;
+    return '+' + uren + 'u' + (rest ? (rest < 10 ? '0' : '') + rest : '');
+  }
+
+  /**
+   * Regenradar rond de gekozen spot, van nu tot 2,5 uur vooruit.
+   *
+   * Opbouw: een raster OpenStreetMap-tegels als scherpe ondergrond, met daarover per tijdstap een
+   * transparant radarbeeld van Buienradar. Alle lagen staan tegelijk in de DOM en alleen de
+   * `opacity` wisselt, wat vloeiend animeert zonder per stap opnieuw te laden.
+   *
+   * Waarom deze bron, na twee eerdere pogingen die het niet werden:
+   * - Buienradars kant-en-klare animatie-GIF toont wél de toekomst maar is niet in te zoomen: hun
+   *   lat/lon/zoom/bbox-parameters worden genegeerd (live geverifieerd — identieke bytes terug) en
+   *   het beeld blijft altijd 550x512, wat je ook opvraagt.
+   * - RainViewer-tegels kunnen wél inzoomen, maar hun gratis API levert nul nowcast-frames; die
+   *   weergave toonde dus uitsluitend het verleden. Voor de vraag "kan ik zo het water op?" is dat
+   *   waardeloos.
+   * Wat beide problemen oplost: Buienradars losse-beeld-endpoint accepteert een `timestamp` in UTC
+   * (stappen van 5 minuten) en geeft dat beeld ook voor tijdstippen in de toekomst, tot ~170
+   * minuten vooruit. Met `renderBackground=false` komt het als transparante laag terug, zodat het
+   * over een eigen, correct gepositioneerde kaart gelegd kan worden — en dan bepalen wij de
+   * uitsnede, niet de bron. Dat geeft toekomst én inzoomen tegelijk.
+   *
+   * Bewust zonder kaartbibliotheek (Leaflet e.d.): een raster tegels plaatsen is een handvol regels
+   * en scheelt een externe afhankelijkheid binnen de HtmlService-iframe.
+   *
+   * Beperking die blijft: verder dan ~2,5 uur kan een neerslagradar niet kijken — die meet actuele
+   * neerslag en extrapoleert een korte nowcast. Voor de rest van de dag is de regenverwachting per
+   * uur (💧 mm in de Grafiek-weergave) de juiste bron.
+   */
+  function bouwRadarWeergave(locatie) {
+    var container = document.createElement('div');
+    container.className = 'radar-weergave';
+
+    if (!locatie) {
+      container.textContent = 'Geen locatie geselecteerd.';
+      return container;
+    }
+
+    var kaart = document.createElement('div');
+    kaart.className = 'radar-kaart';
+    container.appendChild(kaart);
+
+    var vlak = document.createElement('div');
+    vlak.className = 'radar-vlak';
+    kaart.appendChild(vlak);
+
+    var marker = document.createElement('div');
+    marker.className = 'radar-spot';
+    marker.title = locatie.naam;
+    kaart.appendChild(marker);
+
+    // Los van .radar-vlak: de "Heel Nederland"-weergave (zie renderRadarGeografie_) plaatst haar
+    // beeldlagen hier in, niet in vlak — vlak wordt daar geschaald/verschoven (transform) voor de
+    // ingezoomde weergave, en die transform zou het volledige Buienradar-beeld mee vervormen.
+    var volVlak = document.createElement('div');
+    volVlak.className = 'radar-vol-vlak';
+    kaart.appendChild(volVlak);
+
+    // Radarbeeld-lagen (animatieframes) en laadvoortgang staan hier, niet lokaal in
+    // renderRadarGeografie_ hieronder: die bouwt bij een omschakeling (zie heleNlKnop) tegels en
+    // lagen helemaal opnieuw op (simpeler en minder foutgevoelig dan twee parallelle sets
+    // <img>-elementen bijhouden voor de twee weergaven), maar de animatie zelf (index/timer/
+    // afgehandeld-teller) moet daar juist ONgemoeid doorlopen — vandaar de gedeelde closure-
+    // variabelen hier, die renderRadarGeografie_ bij elke aanroep bijwerkt.
+    var tijden = radarFramesVoor();
+    var lagen = [];
+    var afgehandeld = 0;
+    var heleNlActief = false;
+
+    /**
+     * Bouwt de tegels + radarbeeld-lagen + positionering (opnieuw) op, voor de huidige stand van
+     * `heleNlActief`. Breekt bestaande <img>-elementen af en maakt ze opnieuw aan i.p.v. te
+     * hergebruiken — de radarbeeld-URL's zijn toch al door de browser gecachet (zie
+     * voorlaadRadar), dus dat kost geen nieuwe download, alleen een goedkope nieuwe <img>-aanmaak.
+     * Laat de lopende animatie (index/timer) met rust: als er al een frame getoond werd, toont
+     * deze functie aan het eind gewoon datzelfde frame-nummer opnieuw, i.p.v. terug naar frame 0.
+     */
+    function renderRadarGeografie_() {
+      vlak.innerHTML = '';
+      volVlak.innerHTML = '';
+      lagen = [];
+      afgehandeld = 0;
+
+      if (heleNlActief) {
+        // Buienradar's eigen, volledig gestylede kaartbeeld (RadarMapRainNL) — geen tegels, geen
+        // transform-rekenwerk nodig, dit ene beeld IS de hele kaart al (zie radarBeeldUrlVolledig_).
+        // Marker verbergen: dat beeld heeft geen eigen locatie-markering en de spot-positie is hier
+        // niet uit te rekenen (zie .radar-beeld-vol in Stylesheet.html voor de bijsnijding).
+        marker.style.display = 'none';
+        tijden.forEach(function (frame) {
+          var laag = document.createElement('img');
+          laag.className = 'radar-beeld radar-beeld-vol';
+          laag.alt = '';
+          laag.onload = function () { meldAfgehandeld(); };
+          laag.onerror = function () { laag.classList.add('mislukt'); meldAfgehandeld(); };
+          laag.src = radarBeeldUrlVolledig_(frame, kaart.clientWidth, kaart.clientHeight);
+          volVlak.appendChild(laag);
+          lagen.push(laag);
+        });
+      } else {
+        marker.style.display = '';
+        // Alles binnen .radar-vlak wordt uitgedrukt in globale Web-Mercator-pixels van RADAR_ZOOM,
+        // met de linkerbovenhoek van het tegelraster als oorsprong. Kaarttegels en radarbeeld liggen
+        // daardoor per definitie op dezelfde geografische plek — geen aparte uitlijnstap nodig.
+        var opzet = radarKaartOpzet(locatie);
+        var oorsprong = opzet.oorsprong;
+
+        for (var dy = 0; dy < opzet.grid; dy++) {
+          for (var dx = 0; dx < opzet.grid; dx++) {
+            var tegel = document.createElement('img');
+            tegel.className = 'radar-tegel';
+            tegel.alt = '';
+            tegel.src = radarTegelUrl(opzet.tx0 + dx, opzet.ty0 + dy);
+            tegel.style.left = dx * RADAR_TEGEL_PX + 'px';
+            tegel.style.top = dy * RADAR_TEGEL_PX + 'px';
+            vlak.appendChild(tegel);
+          }
+        }
+
+        // Het radarbeeld beslaat een vast gebied (RADAR_BEELD); we plaatsen het één op één op zijn
+        // geografische positie in hetzelfde pixelrooster. Op deze zoom wordt het lokaal ~3,4x
+        // uitvergroot — radardata is ongeveer kilometerresolutie en buien hebben geen scherpe
+        // randen, dus dat oogt zacht maar verliest geen echte informatie. De kaart eronder blijft
+        // scherp, en dat is wat de afbeelding leesbaar maakt.
+        var linksboven = mercatorPixel(RADAR_BEELD.latN, RADAR_BEELD.lonW, RADAR_ZOOM);
+        var rechtsonder = mercatorPixel(RADAR_BEELD.latS, RADAR_BEELD.lonE, RADAR_ZOOM);
+        var beeldStijl = {
+          left: linksboven.x - oorsprong.x + 'px',
+          top: linksboven.y - oorsprong.y + 'px',
+          width: rechtsonder.x - linksboven.x + 'px',
+          height: rechtsonder.y - linksboven.y + 'px',
+        };
+
+        tijden.forEach(function (frame) {
+          var laag = document.createElement('img');
+          laag.className = 'radar-beeld';
+          laag.alt = '';
+          Object.keys(beeldStijl).forEach(function (sleutel) { laag.style[sleutel] = beeldStijl[sleutel]; });
+          laag.onload = function () { meldAfgehandeld(); };
+          // De bron geeft af en toe een 502; die ene stap wordt dan overgeslagen i.p.v. dat er een
+          // gebroken-afbeelding-icoon over de kaart komt te staan.
+          laag.onerror = function () { laag.classList.add('mislukt'); meldAfgehandeld(); };
+          laag.src = radarBeeldUrl(frame);
+          vlak.appendChild(laag);
+          lagen.push(laag);
+        });
+
+        // Spot in het midden van het kader zetten. `scale(1) translate(...)` i.p.v. zomaar
+        // `translate(...)`: zo blijft dit consistent met hoe transform-functies rechts-naar-links
+        // worden toegepast, mocht hier ooit weer een schaalfactor bij komen.
+        vlak.style.left = '50%';
+        vlak.style.top = '50%';
+        vlak.style.transform =
+          'scale(1) translate(' + -(opzet.spot.x - oorsprong.x) + 'px, ' + -(opzet.spot.y - oorsprong.y) + 'px)';
+      }
+
+      if (eersteGetoond) toonFrame(index);
+    }
+
+    var balk = document.createElement('div');
+    balk.className = 'radar-balk';
+    var speelKnop = document.createElement('button');
+    speelKnop.className = 'klein';
+    speelKnop.textContent = '⏸';
+    var tijdLabel = document.createElement('span');
+    tijdLabel.className = 'radar-tijd';
+    // Twee knoppen naast elkaar (i.p.v. één knop waarvan het label wisselt) — dezelfde
+    // schakelaar-stijl als Grafiek/Tabel/Berekening/Radar hierboven (zie bouwDetail), zodat meteen
+    // duidelijk is dát dit een aan/uit-keuze is en welke van de twee actief staat. Gebruikersfeedback
+    // op de vorige, tekst-wisselende knop: "niet heel duidelijk dat het een toggle is".
+    var weergaveSchakelaar = document.createElement('div');
+    weergaveSchakelaar.className = 'schakelaar radar-weergave-schakelaar';
+    var lokaalKnop = document.createElement('button');
+    lokaalKnop.className = 'klein';
+    lokaalKnop.textContent = '📍 ' + locatie.naam;
+    var heleNlKnop = document.createElement('button');
+    heleNlKnop.className = 'klein secundair';
+    heleNlKnop.textContent = '🗺️ Heel NL';
+    function kiesRadarWeergave_(nl) {
+      if (heleNlActief === nl) return;
+      heleNlActief = nl;
+      lokaalKnop.className = 'klein' + (nl ? ' secundair' : '');
+      heleNlKnop.className = 'klein' + (nl ? '' : ' secundair');
+      renderRadarGeografie_();
+    }
+    lokaalKnop.onclick = function (e) { e.stopPropagation(); kiesRadarWeergave_(false); };
+    heleNlKnop.onclick = function (e) { e.stopPropagation(); kiesRadarWeergave_(true); };
+    weergaveSchakelaar.appendChild(lokaalKnop);
+    weergaveSchakelaar.appendChild(heleNlKnop);
+    balk.appendChild(speelKnop);
+    balk.appendChild(weergaveSchakelaar);
+    balk.appendChild(tijdLabel);
+    container.appendChild(balk);
+
+    var bijschrift = document.createElement('p');
+    bijschrift.className = 'uitleg';
+    bijschrift.innerHTML =
+      'Neerslag rond ' + locatie.naam + ', van nu tot 2,5 uur vooruit. Verder kan een radar niet ' +
+      'kijken; voor de rest van de dag staat de verwachte regen per uur (💧) in de Grafiek. ' +
+      'Radar: <a href="https://www.buienradar.nl" target="_blank" rel="noopener">Buienradar.nl</a> · ' +
+      'Kaart: <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap</a>';
+    container.appendChild(bijschrift);
+
+    var index = 0;
+    var timer = null;
+    var gestart = false;
+    var eersteGetoond = false;
+
+    /**
+     * Twee momenten, zodat er zo snel mogelijk iets bruikbaars staat:
+     * 1. zodra het eerste beeld binnen is wordt dat meteen getoond — je ziet de actuele buien dus
+     *    al terwijl de rest nog laadt;
+     * 2. pas als alles binnen is gaat de animatie lopen, anders zou hij langs frames lopen die er
+     *    nog niet zijn en flitst er telkens een kale kaart voorbij.
+     * Na het voorladen (voorlaadRadar) is beide doorgaans in een oogwenk rond, want dan komt alles
+     * uit de browsercache.
+     */
+    function meldAfgehandeld() {
+      afgehandeld++;
+      if (gestart) return;
+      if (!eersteGetoond && lagen[0] && lagen[0].complete && !lagen[0].classList.contains('mislukt')) {
+        eersteGetoond = true;
+        toonFrame(0);
+      }
+      if (afgehandeld >= lagen.length) beginAnimatie();
+      else if (!eersteGetoond) tijdLabel.textContent = 'radarbeelden laden… ' + afgehandeld + '/' + lagen.length;
+    }
+
+    function beginAnimatie() {
+      if (gestart) return;
+      gestart = true;
+      if (lagen[0] && lagen[0].classList.contains('mislukt')) index = volgendeIndex(0);
+      toonFrame(index);
+      startAnimatie();
+    }
+
+    function toonFrame(i) {
+      lagen.forEach(function (laag, k) { laag.classList.toggle('actief', k === i); });
+      var frame = tijden[i];
+      tijdLabel.textContent =
+        frame.tijd.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }) +
+        (frame.vooruitMin === 0 ? ' (nu)' : ' (' + formatVooruitblik(frame.vooruitMin) + ')');
+    }
+
+    /**
+     * Volgende frame, waarbij tijdstappen die de bron niet leverde worden overgeslagen — anders
+     * zou de animatie bij zo'n stap even een lege kaart tonen. De teller begrenst de zoektocht
+     * voor het geval álles mislukt.
+     */
+    function volgendeIndex(vanaf) {
+      var kandidaat = vanaf;
+      for (var pogingen = 0; pogingen < lagen.length; pogingen++) {
+        kandidaat = (kandidaat + 1) % lagen.length;
+        if (!lagen[kandidaat].classList.contains('mislukt')) return kandidaat;
+      }
+      return vanaf;
+    }
+
+    function startAnimatie() {
+      timer = setInterval(function () {
+        index = volgendeIndex(index);
+        toonFrame(index);
+      }, 600);
+    }
+
+    speelKnop.onclick = function (e) {
+      e.stopPropagation();
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+        speelKnop.textContent = '▶';
+      } else {
+        startAnimatie();
+        speelKnop.textContent = '⏸';
+      }
+    };
+
+    // Eerste opbouw — bewust ná de definities van meldAfgehandeld/toonFrame/etc. hierboven (die
+    // renderRadarGeografie_ aanroept), zodat de <img>-onload/onerror-handlers die functies al
+    // kunnen vinden zodra de eerste beelden binnenkomen.
+    renderRadarGeografie_();
+
+    tijdLabel.textContent = 'radarbeelden laden… 0/' + lagen.length;
+    // Vangnet: als de bron blijft hangen, na 8 seconden animeren met wat er wél is, in plaats van
+    // de gebruiker naar een laadtekst te laten kijken.
+    setTimeout(beginAnimatie, 8000);
+    return container;
+  }
+
+  function bouwDetail(dagScore, windBronnen, locatieVoorRadar, meetpunten) {
+    var uurResultaten = dagScore.uurResultaten;
+    var wrapper = document.createElement('div');
+
+    var bronnenTekst = document.createElement('p');
+    bronnenTekst.className = 'uitleg';
+    bronnenTekst.textContent = 'Wind-databronnen voor deze dag: ' + formatWindBronnenTekst(windBronnen) + '.';
+    wrapper.appendChild(bronnenTekst);
+
+    // Waar komen de metingen vandaan? Alleen bij vandaag (locatieVoorRadar !== null): metingen voeden
+    // enkel het actuele uur, dus bij morgen/overmorgen zou dit misleidend zijn.
+    if (locatieVoorRadar !== null && meetpunten && meetpunten.length) {
+      var meetpuntenTekst = document.createElement('p');
+      meetpuntenTekst.className = 'uitleg';
+      meetpuntenTekst.textContent =
+        'Actuele metingen van: ' +
+        meetpunten.map(function (m) {
+          var extra = [];
+          if (m.afstandKm != null) extra.push(m.afstandKm + ' km');
+          if (m.soort) extra.push(m.soort);
+          return m.bron + ' ' + m.naam + (extra.length ? ' (' + extra.join(', ') + ')' : '');
+        }).join(' · ') + '.';
+      wrapper.appendChild(meetpuntenTekst);
+    }
+
+    var schakelaar = document.createElement('div');
+    schakelaar.className = 'schakelaar';
+    var knoppen = [
+      { label: 'Grafiek', bouw: function () { return bouwUurGrafiek(uurResultaten); } },
+      { label: 'Tabel', bouw: function () { return bouwUurTabel(uurResultaten); } },
+      { label: 'Berekening', bouw: function () { return bouwBerekeningWeergave(dagScore.besteUur); } },
+    ];
+    // Radar alleen bij vandaag: het beeld toont de actuele situatie, dus bij morgen/overmorgen
+    // zou het misleidend "nu" tonen onder een toekomstige datum (zie renderDagKaarten).
+    if (locatieVoorRadar !== null) {
+      knoppen.push({ label: '🌧️ Radar', bouw: function () { return bouwRadarWeergave(locatieVoorRadar); } });
+    }
+
+    var inhoud = document.createElement('div');
+
+    function toonWeergave(actieveKnop) {
+      knoppen.forEach(function (k) { k.knopEl.className = 'klein' + (k === actieveKnop ? '' : ' secundair'); });
+      inhoud.innerHTML = '';
+      inhoud.appendChild(actieveKnop.bouw());
+    }
+
+    knoppen.forEach(function (k) {
+      var knopEl = document.createElement('button');
+      knopEl.textContent = k.label;
+      knopEl.onclick = function (e) { e.stopPropagation(); toonWeergave(k); };
+      k.knopEl = knopEl;
+      schakelaar.appendChild(knopEl);
+    });
+
+    wrapper.appendChild(schakelaar);
+    wrapper.appendChild(inhoud);
+    toonWeergave(knoppen[0]); // Grafiek eerst
+    return wrapper;
+  }
+
+  /**
+   * Mirror van scoreBerekening.normaliseerGewichten (server-side): geeft precies de geldige
+   * sleutels terug die in profiel.scoreGewichten staan (open set, geen vaste zes meer — zie
+   * ⚙️ Instellingen -> Score-berekening), en valt in zijn geheel terug op de standaard als er
+   * niets geldigs overblijft. Nodig zodat deze uitleg altijd de daadwerkelijk gebruikte
+   * berekening toont, ook nadat criteria zijn toegevoegd/verwijderd.
+   */
+  function genormaliseerdeGewichten() {
+    var ruw = (profiel && profiel.scoreGewichten) || {};
+    var alleSleutels = SCORE_GEWICHTEN_VELDEN.map(function (v) { return v.key; });
+    var resultaat = {};
+    var som = 0;
+    Object.keys(ruw).forEach(function (key) {
+      if (alleSleutels.indexOf(key) === -1) return;
+      var w = ruw[key];
+      if (typeof w === 'number' && isFinite(w) && w >= 0) {
+        resultaat[key] = w;
+        som += w;
+      }
+    });
+    return som > 0 ? resultaat : STANDAARD_SCORE_GEWICHTEN;
+  }
+
+  function bouwBerekeningWeergave(besteUur) {
+    var container = document.createElement('div');
+    container.className = 'berekening';
+
+    if (!besteUur) {
+      container.textContent = 'Geen bruikbaar uur gevonden vandaag.';
+      return container;
+    }
+
+    var e = besteUur.evaluaties || {};
+    var uurTekst = new Date(besteUur.tijdstip).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+
+    if (besteUur.noGo) {
+      var redenTekst = (besteUur.redenen || []).map(function (r) { return r.variabele + ': ' + (r.reden || 'no-go'); }).join(', ');
+      container.innerHTML =
+        '<p>Om ' + uurTekst + ' is het een harde <strong>no-go</strong>: ' + redenTekst + '.</p>' +
+        '<p class="uitleg">Een harde no-go (windsnelheid, windrichting, windvlagen of onweer) overrulet altijd de rest — de score wordt dan 0, ongeacht de andere criteria.</p>';
+      return container;
+    }
+
+    var gewichten = genormaliseerdeGewichten();
+    var somGewichten = Object.keys(gewichten).reduce(function (s, k) { return s + gewichten[k]; }, 0) || 1;
+
+    // "Facultatief" is het gemiddelde van de facultatieve subcriteria die NIET ook individueel in
+    // de tabel staan (zelfde regel als scoreBerekening.berekenUurScore, hier gespiegeld) — anders
+    // zou een apart gekozen variabele (bv. "Zicht") dubbel meetellen.
+    var FACULTATIEVE_SUBCRITERIA = ['luchttemperatuur', 'watertemperatuur', 'golfhoogte', 'zicht'];
+    var restFacultatief = FACULTATIEVE_SUBCRITERIA.filter(function (k) { return !(k in gewichten); });
+    var facultatiefGemiddelde = restFacultatief.length > 0
+      ? restFacultatief.reduce(function (s, k) { return s + ((e[k] && e[k].score != null) ? e[k].score : 0); }, 0) / restFacultatief.length
+      : 0;
+
+    var table = document.createElement('table');
+    table.className = 'uurtabel';
+    table.innerHTML = '<tr><th>Criterium</th><th>Status</th><th>Deelscore</th><th>Gewicht</th><th>Bijdrage</th></tr>';
+    var gewogenSom = 0;
+    // Volgorde: eerst de niet-facultatieve criteria in vaste, logische volgorde, dan Facultatief
+    // en de eventueel apart gekozen facultatieve subcriteria — leest prettiger dan de willekeurige
+    // sleutelvolgorde van het profiel-object.
+    var weergaveVolgorde = SCORE_GEWICHTEN_VELDEN.map(function (v) { return v.key; })
+      .filter(function (key) { return key in gewichten; });
+    weergaveVolgorde.forEach(function (key) {
+      var score, statusTekst;
+      if (key === 'facultatief') {
+        score = facultatiefGemiddelde;
+        statusTekst = restFacultatief.length > 0
+          ? restFacultatief.map(function (k) { return e[k] ? e[k].status : '–'; }).join(' / ')
+          : '(alle vier apart gekozen hieronder)';
+      } else {
+        var ev = e[key] || {};
+        score = ev.score != null ? ev.score : 0;
+        statusTekst = ev.status || '–';
+      }
+      var bijdrage = score * gewichten[key];
+      gewogenSom += bijdrage;
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td>' + scoreGewichtLabel(key) + '</td><td>' + statusTekst + '</td><td>' + score.toFixed(2) + '</td>' +
+        '<td>' + Math.round((gewichten[key] / somGewichten) * 100) + '%</td><td>' + bijdrage.toFixed(2) + '</td>';
+      table.appendChild(tr);
+    });
+    container.appendChild(table);
+
+    // Delen door de som van de gewichten (i.p.v. aan te nemen dat ze op 1 optellen) — zelfde
+    // normalisatie als scoreBerekening.berekenUurScore, zodat dit exact de server-berekening volgt.
+    var gewogenGemiddelde = gewogenSom / somGewichten;
+    var weerFactor = (e.onweer && e.onweer.score != null) ? e.onweer.score : 1;
+    var formule = document.createElement('p');
+    formule.className = 'uitleg';
+    formule.innerHTML =
+      'Score om ' + uurTekst + ' = (gewogen gemiddelde: ' + gewogenGemiddelde.toFixed(2) + ') × weer-factor (' +
+      weerFactor.toFixed(2) + (weerFactor < 1 ? ', door hoge neerslagkans' : '') + ') × 10 = <strong>' +
+      besteUur.score + '/10</strong>.';
+    container.appendChild(formule);
+
+    return container;
+  }
+
+  /**
+   * Alleen de kn-waarde, geen vlaagfactor-percentage meer (op gebruikersverzoek — het percentage
+   * "hoe ver de vlaag relatief boven het gemiddelde uitkomt" wordt intern nog gebruikt voor de
+   * score/no-go-drempel in drempelwaarden.js, maar voegde als los getal in de Tabel niets toe naast
+   * het gewone kn-getal en verwarde meer dan het hielp. Ook geen " kn"-eenheid meer (die staat sinds
+   * kort in de kolomkop, op gebruikersverzoek).
+   */
+  function formatVlagTekst(u) {
+    var kn = u.ruw && u.ruw.windvlaagKnopen != null ? Math.round(u.ruw.windvlaagKnopen) : null;
+    return kn != null ? String(kn) : '–';
+  }
+
+  function bouwUurRij(u) {
+    var tr = document.createElement('tr');
+    var uur = new Date(u.tijdstip).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+    tr.innerHTML =
+      '<td>' + uur + '</td>' +
+      // toonVlag: false — de windvlaag staat al in de aparte "Vlaag"-kolom hiernaast.
+      // toonEenheid: false — "kn" staat in de kolomkop, niet meer los in elke cel.
+      '<td>' + bouwWindBadgeHtml(u.ruw, false, false) + '</td>' +
+      '<td>' + formatVlagTekst(u) + '</td>' +
+      '<td>' + bouwWeerBadgeHtml(u.ruw) + '</td>' +
+      '<td>' + bouwGetijBadgeHtml(u.ruw, false) + '</td>' +
+      '<td>' + u.score + '</td>';
+    return tr;
+  }
+
+  function bouwUurTabel(uurResultaten) {
+    var table = document.createElement('table');
+    table.className = 'uurtabel';
+    table.innerHTML =
+      '<tr><th>Uur</th><th>Wind (kn)</th><th>Vlaag (kn)</th><th>Weer</th><th>Getij (cm)</th><th>Score</th></tr>';
+    // Zelfde uren-range als de Grafiek (zie GRAFIEK_START_UUR/EIND_UUR hieronder) — de volle 24
+    // uur tonen voegde niets toe (nachtelijke uren zijn toch nooit een bruikbaar kitesurf-moment).
+    var zichtbareUren = uurResultaten.filter(function (u) {
+      var uur = new Date(u.tijdstip).getHours();
+      return uur >= GRAFIEK_START_UUR && uur <= GRAFIEK_EIND_UUR;
+    });
+
+    // Uren die al voorbij zijn, staan standaard ingeklapt: voor "moet ik nu naar het strand" tellen
+    // ze niet meer mee, en ze vullen bij een laat bezoek een groot deel van de tabel. Alleen relevant
+    // voor vandaag — bij morgen/overmorgen ligt geen enkel uur van dat venster nog in het verleden,
+    // dus dan is er simpelweg niets om in te klappen.
+    var nu = new Date();
+    var afgelopen = [];
+    var huidigEnLater = [];
+    zichtbareUren.forEach(function (u) {
+      (new Date(u.tijdstip) < nu ? afgelopen : huidigEnLater).push(u);
+    });
+
+    if (afgelopen.length > 0) {
+      var samenvattingRij = document.createElement('tr');
+      samenvattingRij.className = 'uurtabel-samenvatting';
+      var cel = document.createElement('td');
+      cel.colSpan = 6;
+      var knop = document.createElement('button');
+      knop.type = 'button';
+      knop.className = 'klein secundair';
+      var afgelopenRijen = afgelopen.map(bouwUurRij);
+      function bijwerkenKnopTekst(open) {
+        knop.textContent = (open ? '▾ ' : '▸ ') + afgelopen.length +
+          ' afgelopen ' + (afgelopen.length === 1 ? 'uur' : 'uren') + (open ? ' verbergen' : ' tonen');
+      }
+      bijwerkenKnopTekst(false);
+      knop.onclick = function () {
+        var open = knop.getAttribute('data-open') === '1';
+        afgelopenRijen.forEach(function (tr) { tr.style.display = open ? 'none' : ''; });
+        knop.setAttribute('data-open', open ? '0' : '1');
+        bijwerkenKnopTekst(!open);
+      };
+      cel.appendChild(knop);
+      samenvattingRij.appendChild(cel);
+      table.appendChild(samenvattingRij);
+      afgelopenRijen.forEach(function (tr) { tr.style.display = 'none'; table.appendChild(tr); });
+    }
+
+    huidigEnLater.forEach(function (u) { table.appendChild(bouwUurRij(u)); });
+    return table;
+  }
+
+  // De grafiek toont bewust alleen 09:00-20:00 (i.p.v. de volle 24 uur): 's nachts/vroege ochtend
+  // is er toch nooit een bruikbaar moment, dat maakt de grafiek onnodig lang zonder informatie toe
+  // te voegen. Los van het (instelbare) dagvenster voor het dagoordeel/meldingen — dit is puur een
+  // vaste weergavekeuze voor de grafiek.
+  var GRAFIEK_START_UUR = 9;
+  var GRAFIEK_EIND_UUR = 20;
+
+  function bouwUurGrafiek(uurResultaten) {
+    var wrapper = document.createElement('div');
+    var zichtbareUren = uurResultaten.filter(function (u) {
+      var uur = new Date(u.tijdstip).getHours();
+      return uur >= GRAFIEK_START_UUR && uur <= GRAFIEK_EIND_UUR;
+    });
+
+    // Balkhoogte = windsnelheid: dat is waar een kitesurfer als eerste naar kijkt. De vlagen liggen
+    // er als lijn overheen op dezelfde kn-schaal, zodat je in één blik ziet hóe vlagerig het is
+    // (grote afstand tussen balk en lijn = grillig). Schaal daarom op de hoogste vlaag van de dag,
+    // anders zou de lijn buiten beeld vallen. Balk-kleur blijft de score/no-go.
+    var alleKnopen = [];
+    zichtbareUren.forEach(function (u) {
+      if (!u.ruw) return;
+      if (u.ruw.windKnopen != null) alleKnopen.push(u.ruw.windKnopen);
+      if (u.ruw.windvlaagKnopen != null) alleKnopen.push(u.ruw.windvlaagKnopen);
+    });
+    var maxKn = alleKnopen.length ? Math.ceil(Math.max.apply(null, alleKnopen) / 5) * 5 : 10;
+    if (maxKn < 5) maxKn = 5;
+
+    var regenRij = document.createElement('div');
+    regenRij.className = 'grafiek-regenrij';
+    var balken = document.createElement('div');
+    balken.className = 'grafiek';
+    var labels = document.createElement('div');
+    labels.className = 'grafiek-labels';
+
+    zichtbareUren.forEach(function (u) {
+      var uur = new Date(u.tijdstip).getHours();
+      var wind = u.ruw ? u.ruw.windKnopen : null;
+
+      var balk = document.createElement('div');
+      balk.className = 'balk';
+      balk.style.height = (wind != null ? Math.max(2, (wind / maxKn) * 100) : 2) + '%';
+      var windTekst = '';
+      if (wind != null) {
+        var kompas = windrichtingKompas(u.ruw.windrichtingGraden);
+        windTekst = ', wind ' + Math.round(wind) + ' kn' + (kompas != null ? ' uit ' + kompas : '') +
+          (u.ruw.windvlaagKnopen != null ? ', vlagen ' + Math.round(u.ruw.windvlaagKnopen) + ' kn' : '');
+      }
+      var temp = u.ruw ? u.ruw.luchttemperatuurCelsius : null;
+      var tempTekst = temp != null ? ', ' + Math.round(temp) + '°C' : '';
+      var getijTekst = (u.ruw && u.ruw.getijStatus != null)
+        ? ', getij ' + u.ruw.getijStatus + (u.ruw.waterstandCm != null ? ' (' + Math.round(u.ruw.waterstandCm) + ' cm)' : '')
+        : '';
+      var weerTekst = bouwWeerTooltipTekst(u.ruw);
+      balk.title = new Date(u.tijdstip).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }) +
+        ': score ' + u.score + windTekst + tempTekst + getijTekst + weerTekst;
+      if (u.kleur === 'groen') balk.style.background = '#2ecc71';
+      if (u.kleur === 'oranje') balk.style.background = '#f5a623';
+      if (u.kleur === 'rood') balk.style.background = '#e74c3c';
+      balken.appendChild(balk);
+
+      // Regen per uur boven de grafiek: een druppel met de mm eronder, alleen bij noemenswaardige
+      // neerslag (onder 0.2 mm is het motregen en zou elk uur een druppel krijgen).
+      var regenCel = document.createElement('div');
+      regenCel.className = 'grafiek-regencel';
+      var mm = u.ruw ? u.ruw.neerslagMm : null;
+      if (mm != null && mm >= 0.2) {
+        regenCel.innerHTML = '<span class="regen-druppel">💧</span><span class="regen-mm">' +
+          (mm >= 1 ? Math.round(mm) : mm.toFixed(1)) + '</span>';
+        regenCel.title = Math.round(mm * 10) / 10 + ' mm regen om ' +
+          new Date(u.tijdstip).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+      }
+      regenRij.appendChild(regenCel);
+
+      var label = document.createElement('div');
+      label.className = 'grafiek-label';
+      // Om het niet te vol te maken: alleen elk 3e uur een label (0, 3, 6, ...).
+      label.textContent = uur % 3 === 0 ? uur : '';
+      labels.appendChild(label);
+    });
+
+    // Labels ónder de balken, in dezelfde kolom (niet als sibling van de y-as hieronder) — anders
+    // schuiven de uur-labels niet mee op met de balken die door de y-as opzij worden geduwd.
+    var grafiekWrapper = document.createElement('div');
+    grafiekWrapper.className = 'grafiek-wrapper';
+    grafiekWrapper.appendChild(balken);
+    grafiekWrapper.insertAdjacentHTML('beforeend', bouwGrafiekVlaagLijnSvg(zichtbareUren, maxKn));
+    grafiekWrapper.appendChild(labels);
+
+    // Y-as in knopen, op dezelfde schaal als balken én vlaaglijn.
+    var yAs = document.createElement('div');
+    yAs.className = 'grafiek-yas';
+    yAs.innerHTML = '<span>' + maxKn + '</span><span>' + Math.round(maxKn / 2) + '</span><span>0</span>';
+
+    var grafiekRij = document.createElement('div');
+    grafiekRij.className = 'grafiek-rij';
+    grafiekRij.appendChild(yAs);
+    grafiekRij.appendChild(grafiekWrapper);
+
+    var regenWrapperRij = document.createElement('div');
+    regenWrapperRij.className = 'grafiek-rij';
+    var regenAsVulling = document.createElement('div');
+    regenAsVulling.className = 'grafiek-yas grafiek-yas-leeg';
+    regenWrapperRij.appendChild(regenAsVulling);
+    regenWrapperRij.appendChild(regenRij);
+
+    var legenda = document.createElement('p');
+    legenda.className = 'uitleg grafiek-legenda';
+    legenda.textContent = 'Balk = windsnelheid (kn), kleur = score. Lijn = windvlagen. 💧 = regen in mm.';
+
+    wrapper.appendChild(regenWrapperRij);
+    wrapper.appendChild(grafiekRij);
+    wrapper.appendChild(legenda);
+    return wrapper;
+  }
+
+  /**
+   * Windvlagen als lijn over de windsnelheid-balken heen, op exact dezelfde kn-schaal (maxKn wordt
+   * meegegeven, niet apart berekend) — alleen dán is de afstand tussen balk en lijn een eerlijke
+   * maat voor hoe vlagerig het is. Ontbrekende punten (null) breken de lijn i.p.v. een misleidende
+   * rechte door het gat te trekken.
+   */
+  function bouwGrafiekVlaagLijnSvg(zichtbareUren, maxKn) {
+    var reeks = zichtbareUren.map(function (u) { return u.ruw ? u.ruw.windvlaagKnopen : null; });
+    var geldig = reeks.filter(function (kn) { return kn != null; });
+    if (geldig.length < 2) return '';
+    var schaal = maxKn || Math.max.apply(null, geldig) || 1;
+
+    var segmenten = [];
+    var huidigSegment = [];
+    reeks.forEach(function (kn, i) {
+      if (kn == null) {
+        if (huidigSegment.length > 1) segmenten.push(huidigSegment);
+        huidigSegment = [];
+        return;
+      }
+      var x = reeks.length > 1 ? (i / (reeks.length - 1)) * 100 : 50;
+      // 100 = onderkant, 0 = bovenkant; zelfde 0..maxKn-schaal als de balken eronder.
+      var y = Math.max(2, 100 - (kn / schaal) * 100);
+      huidigSegment.push(x.toFixed(1) + ',' + y.toFixed(1));
+    });
+    if (huidigSegment.length > 1) segmenten.push(huidigSegment);
+    if (segmenten.length === 0) return '';
+
+    var polylines = segmenten.map(function (punten) {
+      return '<polyline points="' + punten.join(' ') + '"></polyline>';
+    }).join('');
+    return '<svg class="grafiek-windlijn" viewBox="0 0 100 100" preserveAspectRatio="none">' + polylines + '</svg>';
+  }
+
+  // --- Instellingen (drempelwaarden + meldingen) ---
+
+  function openInstellingen() {
+    renderInstellingenFormulier();
+    toon('instellingenSectie');
+    springNaar('instellingenSectie');
+  }
+
+  // Werkt met/zonder Clipboard API (die kan ontbreken/geweigerd worden binnen de HtmlService-
+  // iframe) — bij weigering blijft de zichtbare, selecteerbare ID-tekst (user-select: all, zie
+  // .link-banner-url) de handmatige terugval, vandaar de duidelijke knoptekst in dat geval.
+  function kopieerNaarKlembord(tekst, knop) {
+    var oorspronkelijk = knop.textContent;
+    function terugzetten() { setTimeout(function () { knop.textContent = oorspronkelijk; }, 1500); }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(tekst).then(function () {
+        knop.textContent = '✓ Gekopieerd';
+        terugzetten();
+      }).catch(function () {
+        knop.textContent = 'Selecteer hierboven en kopieer';
+        terugzetten();
+      });
+    } else {
+      knop.textContent = 'Selecteer hierboven en kopieer';
+      terugzetten();
+    }
+  }
+
+  function renderInstellingenFormulier() {
+    var container = document.getElementById('instellingenFormulier');
+    container.innerHTML = '';
+
+    // Deel-link: een NIEUW, willekeurig gebruikers-ID (los van dat van deze gebruiker) in de URL,
+    // zodat wie deze link opent een eigen, lege profiel krijgt i.p.v. per ongeluk mee te lezen/
+    // schrijven in dít profiel — dat zou gebeuren als je gewoon de "bewaar deze link"-link
+    // hierboven doorstuurt (die bevat immers je eigen ID). Het ID wordt server-side gegenereerd
+    // (bouwDeelLink in Code.gs). Er wordt pas een Drive-bestand voor dat ID aangemaakt zodra de
+    // ontvanger de link daadwerkelijk opent en iets opslaat.
+    var deelGroep = document.createElement('div');
+    deelGroep.className = 'veldgroep';
+    deelGroep.innerHTML =
+      '<h3>🔗 Deel deze app</h3>' +
+      '<p class="uitleg">Genereer een korte link met een gloednieuw ID voor iemand anders — die ' +
+      'krijgt dan een eigen, lege start i.p.v. jouw profiel te openen.</p>';
+    var deelKnop = document.createElement('button');
+    deelKnop.className = 'klein secundair';
+    deelKnop.textContent = 'Genereer deel-link';
+    var deelLinkBanner = document.createElement('div');
+    deelLinkBanner.className = 'link-banner';
+    deelLinkBanner.style.marginTop = '10px';
+    deelLinkBanner.hidden = true;
+    var deelLinkTekst = document.createElement('div');
+    deelLinkTekst.className = 'link-banner-url';
+    deelLinkBanner.appendChild(deelLinkTekst);
+    var deelKnoppenRij = document.createElement('div');
+    deelKnoppenRij.style.marginTop = '8px';
+    deelKnoppenRij.style.display = 'flex';
+    deelKnoppenRij.style.gap = '8px';
+    var deelKopieerKnop = document.createElement('button');
+    deelKopieerKnop.className = 'klein secundair';
+    deelKopieerKnop.textContent = 'Kopieer';
+    deelKnoppenRij.appendChild(deelKopieerKnop);
+    // navigator.share opent het systeem-deelmenu (WhatsApp, Telegram, e-mail, sms, ...) — niet
+    // overal beschikbaar (vooral desktop-browsers missen 'm), dus alleen tonen als de functie
+    // daadwerkelijk bestaat i.p.v. een knop die het dan alsnog niet doet.
+    if (navigator.share) {
+      var deelSysteemKnop = document.createElement('button');
+      deelSysteemKnop.className = 'klein';
+      deelSysteemKnop.textContent = 'Delen…';
+      deelKnoppenRij.appendChild(deelSysteemKnop);
+    }
+    deelLinkBanner.appendChild(deelKnoppenRij);
+    function koppelDeelLinkKnoppen(deelLink) {
+      deelKopieerKnop.onclick = function () { kopieerNaarKlembord(deelLink, deelKopieerKnop); };
+      if (deelSysteemKnop) {
+        deelSysteemKnop.onclick = function () {
+          navigator.share({ title: 'Kite Weer App', text: 'Kite Weer App — bekijk of het kitesurfweer geschikt is:', url: deelLink })
+            .catch(function () {}); // Gebruiker annuleert het deelmenu: geen foutmelding nodig.
+        };
+      }
+    }
+    deelKnop.onclick = function () {
+      deelLinkTekst.textContent = 'Bezig met genereren…';
+      deelLinkBanner.hidden = false;
+      run('bouwDeelLink')
+        .then(function (r) {
+          deelLinkTekst.textContent = r.url;
+          koppelDeelLinkKnoppen(r.url);
+        })
+        .catch(function (e) { deelLinkTekst.textContent = ''; toonFout(String(e.message || e)); });
+    };
+    deelGroep.appendChild(deelKnop);
+    deelGroep.appendChild(deelLinkBanner);
+    container.appendChild(deelGroep);
+
+    // Meldingen: twee onafhankelijke, los te combineren Telegram-meldingsvormen (beide, één van de
+    // twee, of geen van beide), plus de expliciete meldingsregel (windkracht + richting) die voor
+    // allebei bepaalt wat als "goed" geldt.
+    var meldingGroep = document.createElement('div');
+    meldingGroep.className = 'veldgroep';
+    meldingGroep.innerHTML = '<h3>Meldingen (Telegram)</h3>';
+    var telegramStatus = document.createElement('p');
+    telegramStatus.className = 'uitleg';
+    if (profiel.telegramChatId) {
+      telegramStatus.textContent = '✅ Telegram gekoppeld.';
+      meldingGroep.appendChild(telegramStatus);
+    } else {
+      telegramStatus.textContent = 'ℹ️ Koppel dit profiel aan Telegram om onderstaande meldingen te ontvangen.';
+      meldingGroep.appendChild(telegramStatus);
+      var koppelKnop = document.createElement('a');
+      koppelKnop.className = 'klein';
+      koppelKnop.textContent = '🔗 Koppel aan Telegram';
+      koppelKnop.href = telegramKoppelLink();
+      koppelKnop.style.display = 'inline-block';
+      koppelKnop.style.marginBottom = '10px';
+      meldingGroep.appendChild(koppelKnop);
+    }
+    // Drie duidelijk gescheiden sub-blokken i.p.v. één platte veldenlijst — anders was niet meteen
+    // te zien welk veld bij welk van de twee Telegram-berichten hoort (elk met een eigen kleur
+    // links, teruglopend naar dezelfde kleuren als de meldingsvorm-badges elders in de app).
+    var samenvattingBlok = document.createElement('div');
+    samenvattingBlok.className = 'veldsubgroep';
+    samenvattingBlok.innerHTML = '<h4>📅 Telegram-bericht 1: Dagelijkse samenvatting</h4>' +
+      '<p class="uitleg">Eén bericht per dag, op het gekozen uur, met het oordeel per favoriete locatie over de hele Voorspellingshorizon (zie verderop).</p>';
+    samenvattingBlok.appendChild(bouwCheckboxVeldVoorObject(profiel.meldingen, 'dagelijkseSamenvatting', 'Dit bericht versturen', 'veld-meldingen-samenvatting'));
+    samenvattingBlok.appendChild(bouwTijdstipVeld(profiel.meldingen, 'veld-meldingen-samenvattingtijd'));
+    meldingGroep.appendChild(samenvattingBlok);
+
+    var alertBlok = document.createElement('div');
+    alertBlok.className = 'veldsubgroep';
+    alertBlok.innerHTML = '<h4>⚡ Telegram-bericht 2: Directe alert</h4>' +
+      '<p class="uitleg">Eén bericht zodra een favoriete locatie ergens binnen de Voorspellingshorizon ' +
+      '(zie verderop) een nieuwe "Goede" dag krijgt — dezelfde score-berekening als de kaarten en de ' +
+      'dagelijkse samenvatting hierboven, dus geen aparte meldingsregel meer. Per locatie én per dag ' +
+      'hooguit één keer, ook als de dag daarna nog "Goed" blijft.</p>';
+    alertBlok.appendChild(bouwCheckboxVeldVoorObject(profiel.meldingen, 'directeAlert', 'Dit bericht versturen', 'veld-meldingen-directealert'));
+    meldingGroep.appendChild(alertBlok);
+
+    container.appendChild(meldingGroep);
+
+    // Widget-app: een losse Tasker/App-Factory-APK die altijd de eerstvolgende kitemogelijkheid op
+    // het startscherm toont. Bedoeld om ook met anderen te delen (dus geen toegang tot de
+    // Tasker-taak zelf om ?id=... in de URL te zetten) — die koppelen na installatie via een
+    // invoerveld in de app zelf. De downloadknop kopieert daarom meteen dit ID naar het klembord:
+    // dat invoerveld kan in Tasker de klembordinhoud (%CLIP) als standaardwaarde tonen, zodat
+    // koppelen na installatie meestal alleen nog "OK" tikken is.
+    var widgetGroep = document.createElement('div');
+    widgetGroep.className = 'veldgroep';
+    widgetGroep.innerHTML =
+      '<h3>📱 Installeer ook de Widget</h3>' +
+      '<p class="uitleg">De widget toont altijd je eerstvolgende kitemogelijkheid, rechtstreeks op je startscherm.</p>';
+
+    if (KITEWEER_APK_DOWNLOAD_URL) {
+      var downloadKnop = document.createElement('a');
+      downloadKnop.className = 'klein';
+      downloadKnop.textContent = '⬇️ Download de widget-app (APK)';
+      downloadKnop.href = KITEWEER_APK_DOWNLOAD_URL;
+      downloadKnop.style.display = 'inline-block';
+      downloadKnop.style.marginBottom = '10px';
+      downloadKnop.onclick = function () {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(gebruikerId).catch(function () {});
+        }
+      };
+      widgetGroep.appendChild(downloadKnop);
+    }
+
+    var widgetIdUitleg = document.createElement('p');
+    widgetIdUitleg.className = 'uitleg';
+    widgetIdUitleg.textContent = 'Vul dit ID in bij het koppelen (na "Download" staat het ook al op je klembord):';
+    widgetGroep.appendChild(widgetIdUitleg);
+
+    var widgetIdBanner = document.createElement('div');
+    widgetIdBanner.className = 'link-banner';
+    var widgetIdTekst = document.createElement('div');
+    widgetIdTekst.className = 'link-banner-url';
+    widgetIdTekst.textContent = gebruikerId;
+    widgetIdBanner.appendChild(widgetIdTekst);
+    widgetGroep.appendChild(widgetIdBanner);
+    var widgetKopieerKnop = document.createElement('button');
+    widgetKopieerKnop.className = 'klein secundair';
+    widgetKopieerKnop.textContent = 'Kopieer ID';
+    widgetKopieerKnop.onclick = function () { kopieerNaarKlembord(gebruikerId, widgetKopieerKnop); };
+    widgetGroep.appendChild(widgetKopieerKnop);
+    container.appendChild(widgetGroep);
+
+    var dagvensterGroep = document.createElement('div');
+    dagvensterGroep.className = 'veldgroep';
+    dagvensterGroep.innerHTML = '<h3>Dagvenster</h3><p class="uitleg">Welke uren tellen mee bij het bepalen van het dagoordeel en de meldingen. Standaard 09:00-20:00, gelijk aan het weergavevenster van de grafiek.</p>';
+    dagvensterGroep.appendChild(bouwNummerVeldVoorObject(profiel.dagvenster, 'startUur', 'Vanaf uur (0-23)', 'veld-dagvenster-start'));
+    dagvensterGroep.appendChild(bouwNummerVeldVoorObject(profiel.dagvenster, 'eindUur', 'Tot uur (0-23)', 'veld-dagvenster-eind'));
+    container.appendChild(dagvensterGroep);
+
+    var horizonGroep = document.createElement('div');
+    horizonGroep.className = 'veldgroep';
+    horizonGroep.innerHTML =
+      '<h3>Voorspellingshorizon</h3>' +
+      '<p class="uitleg">Hoeveel dagen vooruit een weeroordeel getoond wordt (standaard 3, max 10). ' +
+      'Let op: niet elke bron voorspelt even ver — Open-Meteo gaat het verst, Windfinder en RWS ' +
+      'dekken meestal maar een paar dagen. Voor dagen daarbuiten valt de app automatisch terug op ' +
+      'minder bronnen (minder betrouwbaar) — open bij een dag het uitklapmenu om te zien welke ' +
+      'wind-bronnen die specifieke dag daadwerkelijk gebruikt zijn.</p>';
+    horizonGroep.appendChild(bouwNummerVeldVoorObject(profiel, 'dagenVooruit', 'Aantal dagen (1-10)', 'veld-dagenvooruit'));
+    container.appendChild(horizonGroep);
+
+    var sessieGroep = document.createElement('div');
+    sessieGroep.className = 'veldgroep';
+    sessieGroep.innerHTML =
+      '<h3>Minimale sessieduur</h3>' +
+      '<p class="uitleg">Hoe lang de wind aaneengesloten goed moet zijn voordat een dag als bruikbaar telt. ' +
+      'Een losse piek van één uur is geen sessie waar je voor naar het strand rijdt — met 2 uur (standaard) ' +
+      'krijgt zo\'n dag geen groene score meer.</p>';
+    sessieGroep.appendChild(bouwNummerVeldVoorObject(profiel, 'minimaleSessieUren', 'Aantal uren (1-8)', 'veld-minimalesessieuren'));
+    container.appendChild(sessieGroep);
+
+    // Score-berekening: uitklapmenu (details/summary — dit is een instelling voor gevorderde
+    // gebruikers, standaard ingeklapt zodat het formulier daarboven niet dichtslibt). Werkt op een
+    // WERKKOPIE (werkbareScoreGewichten), niet rechtstreeks op profiel.scoreGewichten: toevoegen/
+    // verwijderen in de tabel moet meteen zichtbaar zijn zonder dat een druk op "Sluiten" (i.p.v.
+    // "Opslaan") die wijziging alsnog laat beklijven.
+    werkbareScoreGewichten = Object.assign({}, profiel.scoreGewichten);
+    var gewichtenDetails = document.createElement('details');
+    gewichtenDetails.className = 'veldgroep';
+    var gewichtenSamenvatting = document.createElement('summary');
+    gewichtenSamenvatting.innerHTML = '<h3 style="display:inline">Score-berekening</h3>';
+    gewichtenDetails.appendChild(gewichtenSamenvatting);
+    var gewichtenUitleg = document.createElement('p');
+    gewichtenUitleg.className = 'uitleg';
+    gewichtenUitleg.textContent =
+      'Kies welke variabelen meewegen in het cijfer en hoe zwaar. Dit zijn relatieve factoren, ' +
+      'geen percentages — je hoeft ze niet op 100% te laten optellen, de app berekent zelf de ' +
+      'onderlinge verhouding. De huidige criteria hieronder zijn de ingebouwde standaard; voeg er ' +
+      'desgewenst meer aan toe uit de lijst.';
+    gewichtenDetails.appendChild(gewichtenUitleg);
+    var gewichtenTabelHouder = document.createElement('div');
+    gewichtenDetails.appendChild(gewichtenTabelHouder);
+    herrenderScoreGewichtenTabel(gewichtenTabelHouder);
+    container.appendChild(gewichtenDetails);
+
+    DREMPEL_VELDEN.forEach(function (groep) {
+      var groepEl = document.createElement('div');
+      groepEl.className = 'veldgroep';
+      var titel = document.createElement('h3');
+      titel.textContent = groep.groep;
+      groepEl.appendChild(titel);
+
+      groep.velden.forEach(function (veld) {
+        groepEl.appendChild(bouwNummerVeld(groep.pad, veld.key, veld.label));
+      });
+      if (groep.checkbox) groepEl.appendChild(bouwCheckboxVeld(groep.pad, groep.checkbox.key, groep.checkbox.label));
+
+      container.appendChild(groepEl);
+    });
+
+    // Getij heeft een select i.p.v. een getal.
+    var getijGroep = document.createElement('div');
+    getijGroep.className = 'veldgroep';
+    getijGroep.innerHTML = '<h3>Getij / waterstand</h3>';
+    var rij = document.createElement('div');
+    rij.className = 'veldrij';
+    var label = document.createElement('label');
+    label.textContent = 'Voorkeur';
+    var select = document.createElement('select');
+    ['geen', 'hoog', 'laag'].forEach(function (optie) {
+      var o = document.createElement('option');
+      o.value = optie;
+      o.textContent = optie;
+      if (profiel.drempelwaarden.getij.voorkeur === optie) o.selected = true;
+      select.appendChild(o);
+    });
+    select.id = 'veld-getij-voorkeur';
+    rij.appendChild(label);
+    rij.appendChild(select);
+    getijGroep.appendChild(rij);
+    container.appendChild(getijGroep);
+  }
+
+  function bouwNummerVeld(pad, key, label) {
+    return bouwNummerVeldVoorObject(profiel.drempelwaarden[pad], key, label, 'veld-' + pad + '-' + key);
+  }
+
+  function bouwNummerVeldVoorObject(obj, key, label, id) {
+    var rij = document.createElement('div');
+    rij.className = 'veldrij';
+    var labelEl = document.createElement('label');
+    labelEl.textContent = label;
+    var input = document.createElement('input');
+    input.type = 'number';
+    input.step = 'any';
+    input.id = id;
+    var waarde = obj[key];
+    input.value = waarde == null ? '' : waarde;
+    rij.appendChild(labelEl);
+    rij.appendChild(input);
+    return rij;
+  }
+
+  /**
+   * Eén <input type="time"> i.p.v. twee losse uur/minuut-getalvelden — dat was onnodig omslachtig
+   * en een aparte bron van fouten (een leeg of ongeldig uur-veld met een prima minuut-veld).
+   * `meldingenObj.samenvattingUur`/`.samenvattingMinuut` blijven de opslagvorm (server-side
+   * ongewijzigd); dit veld zet dat alleen om naar/van "HH:MM" voor de browser-tijdpicker.
+   */
+  function bouwTijdstipVeld(meldingenObj, id) {
+    var rij = document.createElement('div');
+    rij.className = 'veldrij';
+    var labelEl = document.createElement('label');
+    labelEl.textContent = 'Tijdstip';
+    var input = document.createElement('input');
+    input.type = 'time';
+    input.id = id;
+    var uur = meldingenObj.samenvattingUur != null ? meldingenObj.samenvattingUur : 8;
+    var minuut = meldingenObj.samenvattingMinuut != null ? meldingenObj.samenvattingMinuut : 0;
+    input.value = String(uur).padStart(2, '0') + ':' + String(minuut).padStart(2, '0');
+    rij.appendChild(labelEl);
+    rij.appendChild(input);
+    return rij;
+  }
+
+  /** Actieve criteria, in een vaste, leesbare volgorde (niet de willekeurige object-sleutelvolgorde). */
+  function sorteerActieveGewichtSleutels() {
+    return SCORE_GEWICHTEN_VELDEN.map(function (v) { return v.key; })
+      .filter(function (key) { return key in werkbareScoreGewichten; });
+  }
+
+  /**
+   * Leest de zichtbare gewicht-inputs terug in werkbareScoreGewichten vóórdat de tabel opnieuw
+   * opgebouwd wordt (toevoegen/verwijderen/herstellen) — anders zou een net getypte aanpassing in
+   * een andere rij verloren gaan zodra de tabel herrendert.
+   */
+  function synchroniseerGewichtenVanuitDom() {
+    Object.keys(werkbareScoreGewichten).forEach(function (key) {
+      var input = document.getElementById('veld-gewicht-' + key);
+      if (!input) return;
+      var raw = input.value.trim();
+      if (raw !== '' && !isNaN(Number(raw))) werkbareScoreGewichten[key] = Number(raw);
+    });
+  }
+
+  /**
+   * Bouwt de score-gewichten-tabel (in `houder`) plus de "variabele toevoegen"-rij en de
+   * "Herstel standaard"-knop, op basis van werkbareScoreGewichten. Zelf-herroepend: elke
+   * toevoeg/verwijder/herstel-actie roept dit gewoon opnieuw aan i.p.v. losse DOM-patches bij te
+   * houden — bij een tabel van hooguit ~10 rijen is dat eenvoudiger en net zo snel.
+   */
+  function herrenderScoreGewichtenTabel(houder) {
+    houder.innerHTML = '';
+
+    var table = document.createElement('table');
+    table.className = 'uurtabel';
+    table.innerHTML = '<tr><th>Variabele</th><th>Gewicht</th><th></th></tr>';
+    sorteerActieveGewichtSleutels().forEach(function (key) {
+      var tr = document.createElement('tr');
+      var tdLabel = document.createElement('td');
+      tdLabel.textContent = scoreGewichtLabel(key);
+      var tdInput = document.createElement('td');
+      var input = document.createElement('input');
+      input.type = 'number';
+      input.step = 'any';
+      input.min = '0';
+      input.id = 'veld-gewicht-' + key;
+      input.value = werkbareScoreGewichten[key];
+      tdInput.appendChild(input);
+      var tdVerwijder = document.createElement('td');
+      var verwijderKnop = document.createElement('button');
+      verwijderKnop.type = 'button';
+      verwijderKnop.className = 'klein secundair';
+      verwijderKnop.textContent = '✕';
+      verwijderKnop.title = 'Verwijder ' + scoreGewichtLabel(key);
+      verwijderKnop.onclick = function () {
+        synchroniseerGewichtenVanuitDom();
+        delete werkbareScoreGewichten[key];
+        herrenderScoreGewichtenTabel(houder);
+      };
+      tdVerwijder.appendChild(verwijderKnop);
+      tr.appendChild(tdLabel);
+      tr.appendChild(tdInput);
+      tr.appendChild(tdVerwijder);
+      table.appendChild(tr);
+    });
+    houder.appendChild(table);
+
+    // Alleen variabelen die nog niet in de tabel staan zijn te kiezen — zodra iets is toegevoegd
+    // verdwijnt het vanzelf uit deze lijst (die wordt bij elke herrender opnieuw opgebouwd).
+    var beschikbaar = SCORE_GEWICHTEN_VELDEN.filter(function (v) { return !(v.key in werkbareScoreGewichten); });
+    if (beschikbaar.length > 0) {
+      var toevoegRij = document.createElement('div');
+      toevoegRij.className = 'veldrij';
+      var select = document.createElement('select');
+      select.id = 'veld-gewicht-nieuw';
+      beschikbaar.forEach(function (v) {
+        var optie = document.createElement('option');
+        optie.value = v.key;
+        optie.textContent = v.label;
+        select.appendChild(optie);
+      });
+      var toevoegKnop = document.createElement('button');
+      toevoegKnop.type = 'button';
+      toevoegKnop.className = 'klein';
+      toevoegKnop.textContent = '+ Toevoegen';
+      toevoegKnop.onclick = function () {
+        synchroniseerGewichtenVanuitDom();
+        var nieuweKey = select.value;
+        // De ingebouwde standaardwaarde als startgewicht als die bestaat (bv. bij "Herstellen"
+        // van iets dat er al eens uit is gehaald); anders 0,1 als zichtbaar, niet-nul startpunt.
+        werkbareScoreGewichten[nieuweKey] = STANDAARD_SCORE_GEWICHTEN[nieuweKey] != null ? STANDAARD_SCORE_GEWICHTEN[nieuweKey] : 0.1;
+        herrenderScoreGewichtenTabel(houder);
+      };
+      toevoegRij.appendChild(select);
+      toevoegRij.appendChild(toevoegKnop);
+      houder.appendChild(toevoegRij);
+    }
+
+    var herstelKnop = document.createElement('button');
+    herstelKnop.type = 'button';
+    herstelKnop.className = 'klein secundair';
+    herstelKnop.textContent = 'Herstel standaard';
+    herstelKnop.style.marginTop = '8px';
+    herstelKnop.onclick = function () {
+      werkbareScoreGewichten = Object.assign({}, STANDAARD_SCORE_GEWICHTEN);
+      herrenderScoreGewichtenTabel(houder);
+    };
+    houder.appendChild(herstelKnop);
+  }
+
+  function bouwCheckboxVeld(pad, key, label) {
+    return bouwCheckboxVeldVoorObject(profiel.drempelwaarden[pad], key, label, 'veld-' + pad + '-' + key);
+  }
+
+  function bouwCheckboxVeldVoorObject(obj, key, label, id) {
+    var rij = document.createElement('div');
+    rij.className = 'veldrij';
+    var labelEl = document.createElement('label');
+    labelEl.textContent = label;
+    var input = document.createElement('input');
+    input.type = 'checkbox';
+    input.id = id;
+    input.checked = !!obj[key];
+    rij.appendChild(labelEl);
+    rij.appendChild(input);
+    return rij;
+  }
+
+  function opslaanInstellingen() {
+    profiel.meldingen.dagelijkseSamenvatting = document.getElementById('veld-meldingen-samenvatting').checked;
+    var tijdstip = document.getElementById('veld-meldingen-samenvattingtijd').value; // "HH:MM"
+    if (tijdstip) {
+      var delen = tijdstip.split(':');
+      profiel.meldingen.samenvattingUur = Number(delen[0]);
+      profiel.meldingen.samenvattingMinuut = Number(delen[1]);
+    }
+    profiel.meldingen.directeAlert = document.getElementById('veld-meldingen-directealert').checked;
+    profiel.dagvenster.startUur = Number(document.getElementById('veld-dagvenster-start').value);
+    profiel.dagvenster.eindUur = Number(document.getElementById('veld-dagvenster-eind').value);
+    profiel.dagenVooruit = Number(document.getElementById('veld-dagenvooruit').value);
+    profiel.minimaleSessieUren = Number(document.getElementById('veld-minimalesessieuren').value);
+
+    // De tabel bepaalt nu zelf welke criteria meetellen (toevoegen/verwijderen, zie
+    // herrenderScoreGewichtenTabel) — eerst de laatst getypte gewichten uit de zichtbare rijen
+    // overnemen, dan die complete werkkopie (niet gemerged met wat er eerder stond) als nieuwe
+    // profiel.scoreGewichten vastleggen.
+    synchroniseerGewichtenVanuitDom();
+    profiel.scoreGewichten = Object.assign({}, werkbareScoreGewichten);
+
+    DREMPEL_VELDEN.forEach(function (groep) {
+      groep.velden.forEach(function (veld) {
+        var input = document.getElementById('veld-' + groep.pad + '-' + veld.key);
+        var raw = input.value.trim();
+        profiel.drempelwaarden[groep.pad][veld.key] = raw === '' ? null : Number(raw);
+      });
+      if (groep.checkbox) {
+        var cb = document.getElementById('veld-' + groep.pad + '-' + groep.checkbox.key);
+        profiel.drempelwaarden[groep.pad][groep.checkbox.key] = cb.checked;
+      }
+    });
+    profiel.drempelwaarden.getij.voorkeur = document.getElementById('veld-getij-voorkeur').value;
+
+    // Zichtbare bevestiging op de knop zelf: zonder dit sloot het paneel meteen en onopvallend,
+    // wat het onterecht deed lijken alsof er niets was opgeslagen (gebruikersmelding). Geen
+    // `disabled` hier — bij een mislukte opslag (zie slaProfielOp's catch) moet de knop gewoon
+    // weer bruikbaar zijn, niet vastzitten op uitgeschakeld.
+    var knop = document.getElementById('opslaanInstellingenKnop');
+    var oorspronkelijkeTekst = knop.textContent;
+    slaProfielOp(function () {
+      werkConfiguratieBannerBij();
+      knop.textContent = '✓ Opgeslagen';
+      setTimeout(function () {
+        knop.textContent = oorspronkelijkeTekst;
+        verberg('instellingenSectie');
+        if (huidigeLocatie) kiesLocatie(huidigeLocatie);
+      }, 900);
+    });
+  }
+
+  // --- Databronnen (aparte instellingenknop) ---
+
+  function openBronnen() {
+    renderBronnenFormulier();
+    toon('bronnenSectie');
+    springNaar('bronnenSectie');
+  }
+
+  function renderBronnenFormulier() {
+    var container = document.getElementById('bronnenFormulier');
+    container.innerHTML = '';
+    DATABRON_VELDEN.forEach(function (veld) {
+      container.appendChild(bouwCheckboxVeldVoorObject(profiel.databronnen, veld.key, veld.label, 'veld-bron-' + veld.key));
+    });
+  }
+
+  function opslaanBronnen() {
+    DATABRON_VELDEN.forEach(function (veld) {
+      profiel.databronnen[veld.key] = document.getElementById('veld-bron-' + veld.key).checked;
+    });
+    slaProfielOp(function () {
+      verberg('bronnenSectie');
+      if (huidigeLocatie) kiesLocatie(huidigeLocatie);
+    });
+  }
+
+  function slaProfielOp(daarnaAction) {
+    toonLaad(true);
+    run('saveProfiel', gebruikerId, profiel)
+      .then(function (r) {
+        profiel = r.profiel;
+        toonLaad(false);
+        if (daarnaAction) daarnaAction();
+      })
+      .catch(function (e) { toonLaad(false); toonFout(String(e.message || e)); });
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    document.getElementById('zoekKnop').onclick = zoeken;
+    document.getElementById('zoekInput').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') zoeken();
+    });
+    // De topbar-knoppen werken als toggle (nogmaals klikken sluit het paneel weer) — niet alleen
+    // via de "Sluiten"-knop onderaan het (soms lange) formulier, die anders de enige manier was
+    // om weer in te klappen.
+    document.getElementById('instellingenKnop').onclick = function () {
+      if (document.getElementById('instellingenSectie').hidden) openInstellingen();
+      else verberg('instellingenSectie');
+    };
+    document.getElementById('nuInstellenKnop').onclick = openInstellingen;
+    document.getElementById('sluitInstellingenKnop').onclick = function () { verberg('instellingenSectie'); };
+    document.getElementById('opslaanInstellingenKnop').onclick = opslaanInstellingen;
+    document.getElementById('bronnenKnop').onclick = function () {
+      if (document.getElementById('bronnenSectie').hidden) openBronnen();
+      else verberg('bronnenSectie');
+    };
+    document.getElementById('sluitBronnenKnop').onclick = function () { verberg('bronnenSectie'); };
+    document.getElementById('opslaanBronnenKnop').onclick = opslaanBronnen;
+    document.getElementById('verwijderLocatieKnop').onclick = verwijderHuidigeLocatie;
+    document.getElementById('vergelijkKnop').onclick = openVergelijk;
+    document.getElementById('sluitVergelijkKnop').onclick = function () { verberg('vergelijkSectie'); };
+    document.getElementById('themaKnop').onclick = wisselThema;
+    werkThemaKnopBij();
+    document.getElementById('onboardingKnop').onclick = function () {
+      document.getElementById('onboardingKaart').hidden = true;
+      try { localStorage.setItem(ONBOARDING_GEZIEN_SLEUTEL, '1'); } catch (e) {}
+      openInstellingen();
+    };
+    init();
+  });
+</script>

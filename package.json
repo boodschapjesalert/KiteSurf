@@ -1,0 +1,12 @@
+{
+  "name": "kiteweer-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Telegram Mini App 'Kite Weer App' op Google Apps Script",
+  "scripts": {
+    "test": "node --test \"test/**/*.test.js\"",
+    "build": "node build.js",
+    "push": "npm run build && clasp push"
+  },
+  "license": "UNLICENSED"
+}

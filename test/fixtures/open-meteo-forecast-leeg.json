@@ -1,0 +1,16 @@
+{
+  "latitude": 52.0,
+  "longitude": 4.3,
+  "hourly_units": { "time": "iso8601" },
+  "hourly": {
+    "time": [],
+    "wind_speed_10m": [],
+    "wind_direction_10m": [],
+    "wind_gusts_10m": [],
+    "weather_code": [],
+    "precipitation_probability": [],
+    "temperature_2m": [],
+    "visibility": [],
+    "cloud_cover": []
+  }
+}

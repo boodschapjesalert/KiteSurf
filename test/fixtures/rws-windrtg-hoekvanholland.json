@@ -1,0 +1,397 @@
+{
+  "Succesvol": true,
+  "WaarnemingenLijst": [
+    {
+      "AquoMetadata": {
+        "BemonsteringsApparaat": {
+          "Code": "8000",
+          "Omschrijving": "NVT"
+        },
+        "BemonsteringsMethode": {
+          "Code": "NVT",
+          "Omschrijving": "NVT"
+        },
+        "BemonsteringsSoort": {
+          "Code": "SB",
+          "Omschrijving": "Steekbemonstering"
+        },
+        "BioTaxon": {
+          "Code": "NVT",
+          "Omschrijving": "NVT"
+        },
+        "BioTaxonType": {
+          "Code": "",
+          "Omschrijving": ""
+        },
+        "Compartiment": {
+          "Code": "LT",
+          "Omschrijving": "Lucht"
+        },
+        "Eenheid": {
+          "Code": "graad",
+          "Omschrijving": "graad"
+        },
+        "Groepering": {
+          "Code": "",
+          "Omschrijving": ""
+        },
+        "Grootheid": {
+          "Code": "WINDRTG",
+          "Omschrijving": "Windrichting"
+        },
+        "Hoedanigheid": {
+          "Code": "WARNDN",
+          "Omschrijving": "t.o.v. ware Noorden"
+        },
+        "MeetApparaat": {
+          "Code": "10277",
+          "Omschrijving": "other:Windrichtingmeter - type Windvaan KNMI"
+        },
+        "Orgaan": {
+          "Code": "NVT",
+          "Omschrijving": "NVT"
+        },
+        "Parameter": {
+          "Code": "NVT",
+          "Omschrijving": "NVT"
+        },
+        "Parameter_Wat_Omschrijving": "Windrichting in Lucht t.o.v. ware Noorden in graad",
+        "ProcesType": "meting",
+        "Typering": {
+          "Code": "NVT",
+          "Omschrijving": "NVT"
+        },
+        "WaardeBepalingsMethode": {
+          "Code": "other:F034",
+          "Omschrijving": "10 minuut gemiddelde van de windrichting"
+        },
+        "WaardeBepalingsTechniek": {
+          "Code": "NVT",
+          "Omschrijving": "NVT"
+        },
+        "WaardeBewerkingsMethode": {
+          "Code": "NVT",
+          "Omschrijving": "NVT"
+        }
+      },
+      "Locatie": {
+        "Code": "hoekvanholland",
+        "Coordinatenstelsel": "ETRS89",
+        "Lat": 51.976899,
+        "Lon": 4.119827,
+        "Naam": "Hoek van Holland",
+        "Omschrijving": "rechter oever kilometer 1030.1"
+      },
+      "MetingenLijst": [
+        {
+          "Meetwaarde": {
+            "Waarde_Alfanumeriek": "251.7",
+            "Waarde_Numeriek": 251.7
+          },
+          "Tijdstip": "2026-08-30T05:10:00.000+01:00",
+          "WaarnemingMetadata": {
+            "Bemonsteringshoogte": "150000",
+            "Kwaliteitswaardecode": "00",
+            "OpdrachtgevendeInstantie": "RIKZ_METEO",
+            "Referentievlak": "NVT",
+            "Statuswaarde": "Ongecontroleerd"
+          }
+        },
+        {
+          "Meetwaarde": {
+            "Waarde_Alfanumeriek": "247.7",
+            "Waarde_Numeriek": 247.7
+          },
+          "Tijdstip": "2026-08-30T05:20:00.000+01:00",
+          "WaarnemingMetadata": {
+            "Bemonsteringshoogte": "150000",
+            "Kwaliteitswaardecode": "00",
+            "OpdrachtgevendeInstantie": "RIKZ_METEO",
+            "Referentievlak": "NVT",
+            "Statuswaarde": "Ongecontroleerd"
+          }
+        },
+        {
+          "Meetwaarde": {
+            "Waarde_Alfanumeriek": "251.8",
+            "Waarde_Numeriek": 251.8
+          },
+          "Tijdstip": "2026-08-30T05:30:00.000+01:00",
+          "WaarnemingMetadata": {
+            "Bemonsteringshoogte": "150000",
+            "Kwaliteitswaardecode": "00",
+            "OpdrachtgevendeInstantie": "RIKZ_METEO",
+            "Referentievlak": "NVT",
+            "Statuswaarde": "Ongecontroleerd"
+          }
+        },
+        {
+          "Meetwaarde": {
+            "Waarde_Alfanumeriek": "246.3",
+            "Waarde_Numeriek": 246.3
+          },
+          "Tijdstip": "2026-08-30T05:40:00.000+01:00",
+          "WaarnemingMetadata": {
+            "Bemonsteringshoogte": "150000",
+            "Kwaliteitswaardecode": "00",
+            "OpdrachtgevendeInstantie": "RIKZ_METEO",
+            "Referentievlak": "NVT",
+            "Statuswaarde": "Ongecontroleerd"
+          }
+        },
+        {
+          "Meetwaarde": {
+            "Waarde_Alfanumeriek": "250.8",
+            "Waarde_Numeriek": 250.8
+          },
+          "Tijdstip": "2026-08-30T05:50:00.000+01:00",
+          "WaarnemingMetadata": {
+            "Bemonsteringshoogte": "150000",
+            "Kwaliteitswaardecode": "00",
+            "OpdrachtgevendeInstantie": "RIKZ_METEO",
+            "Referentievlak": "NVT",
+            "Statuswaarde": "Ongecontroleerd"
+          }
+        },
+        {
+          "Meetwaarde": {
+            "Waarde_Alfanumeriek": "254.4",
+            "Waarde_Numeriek": 254.4
+          },
+          "Tijdstip": "2026-08-30T06:00:00.000+01:00",
+          "WaarnemingMetadata": {
+            "Bemonsteringshoogte": "150000",
+            "Kwaliteitswaardecode": "00",
+            "OpdrachtgevendeInstantie": "RIKZ_METEO",
+            "Referentievlak": "NVT",
+            "Statuswaarde": "Ongecontroleerd"
+          }
+        },
+        {
+          "Meetwaarde": {
+            "Waarde_Alfanumeriek": "250.9",
+            "Waarde_Numeriek": 250.9
+          },
+          "Tijdstip": "2026-08-30T06:10:00.000+01:00",
+          "WaarnemingMetadata": {
+            "Bemonsteringshoogte": "150000",
+            "Kwaliteitswaardecode": "00",
+            "OpdrachtgevendeInstantie": "RIKZ_METEO",
+            "Referentievlak": "NVT",
+            "Statuswaarde": "Ongecontroleerd"
+          }
+        },
+        {
+          "Meetwaarde": {
+            "Waarde_Alfanumeriek": "255.3",
+            "Waarde_Numeriek": 255.3
+          },
+          "Tijdstip": "2026-08-30T06:20:00.000+01:00",
+          "WaarnemingMetadata": {
+            "Bemonsteringshoogte": "150000",
+            "Kwaliteitswaardecode": "00",
+            "OpdrachtgevendeInstantie": "RIKZ_METEO",
+            "Referentievlak": "NVT",
+            "Statuswaarde": "Ongecontroleerd"
+          }
+        }
+      ]
+    },
+    {
+      "AquoMetadata": {
+        "BemonsteringsApparaat": {
+          "Code": "8000",
+          "Omschrijving": "NVT"
+        },
+        "BemonsteringsMethode": {
+          "Code": "NVT",
+          "Omschrijving": "NVT"
+        },
+        "BemonsteringsSoort": {
+          "Code": "SB",
+          "Omschrijving": "Steekbemonstering"
+        },
+        "BioTaxon": {
+          "Code": "NVT",
+          "Omschrijving": "NVT"
+        },
+        "BioTaxonType": {
+          "Code": "",
+          "Omschrijving": ""
+        },
+        "Compartiment": {
+          "Code": "LT",
+          "Omschrijving": "Lucht"
+        },
+        "Eenheid": {
+          "Code": "graad",
+          "Omschrijving": "graad"
+        },
+        "Groepering": {
+          "Code": "",
+          "Omschrijving": ""
+        },
+        "Grootheid": {
+          "Code": "WINDRTG",
+          "Omschrijving": "Windrichting"
+        },
+        "Hoedanigheid": {
+          "Code": "WARNDN",
+          "Omschrijving": "t.o.v. ware Noorden"
+        },
+        "MeetApparaat": {
+          "Code": "8000",
+          "Omschrijving": "NVT"
+        },
+        "Orgaan": {
+          "Code": "NVT",
+          "Omschrijving": "NVT"
+        },
+        "Parameter": {
+          "Code": "NVT",
+          "Omschrijving": "NVT"
+        },
+        "Parameter_Wat_Omschrijving": "Windrichting verwachting in Lucht t.o.v. ware Noorden in graad",
+        "ProcesType": "verwachting",
+        "Typering": {
+          "Code": "NVT",
+          "Omschrijving": "NVT"
+        },
+        "WaardeBepalingsMethode": {
+          "Code": "RWSM-F232",
+          "Omschrijving": "RWS Methodiek F232"
+        },
+        "WaardeBepalingsTechniek": {
+          "Code": "NVT",
+          "Omschrijving": "NVT"
+        },
+        "WaardeBewerkingsMethode": {
+          "Code": "NVT",
+          "Omschrijving": "NVT"
+        }
+      },
+      "Locatie": {
+        "Code": "hoekvanholland",
+        "Coordinatenstelsel": "ETRS89",
+        "Lat": 51.976899,
+        "Lon": 4.119827,
+        "Naam": "Hoek van Holland",
+        "Omschrijving": "rechter oever kilometer 1030.1"
+      },
+      "MetingenLijst": [
+        {
+          "Meetwaarde": {
+            "Waarde_Alfanumeriek": "244",
+            "Waarde_Numeriek": 244
+          },
+          "Tijdstip": "2026-08-30T05:10:00.000+01:00",
+          "WaarnemingMetadata": {
+            "Bemonsteringshoogte": "0",
+            "Kwaliteitswaardecode": "00",
+            "OpdrachtgevendeInstantie": "RIKZ_VERWACHT",
+            "Referentievlak": "NVT",
+            "Statuswaarde": "Ongecontroleerd"
+          }
+        },
+        {
+          "Meetwaarde": {
+            "Waarde_Alfanumeriek": "244",
+            "Waarde_Numeriek": 244
+          },
+          "Tijdstip": "2026-08-30T05:20:00.000+01:00",
+          "WaarnemingMetadata": {
+            "Bemonsteringshoogte": "0",
+            "Kwaliteitswaardecode": "00",
+            "OpdrachtgevendeInstantie": "RIKZ_VERWACHT",
+            "Referentievlak": "NVT",
+            "Statuswaarde": "Ongecontroleerd"
+          }
+        },
+        {
+          "Meetwaarde": {
+            "Waarde_Alfanumeriek": "244",
+            "Waarde_Numeriek": 244
+          },
+          "Tijdstip": "2026-08-30T05:30:00.000+01:00",
+          "WaarnemingMetadata": {
+            "Bemonsteringshoogte": "0",
+            "Kwaliteitswaardecode": "00",
+            "OpdrachtgevendeInstantie": "RIKZ_VERWACHT",
+            "Referentievlak": "NVT",
+            "Statuswaarde": "Ongecontroleerd"
+          }
+        },
+        {
+          "Meetwaarde": {
+            "Waarde_Alfanumeriek": "244",
+            "Waarde_Numeriek": 244
+          },
+          "Tijdstip": "2026-08-30T05:40:00.000+01:00",
+          "WaarnemingMetadata": {
+            "Bemonsteringshoogte": "0",
+            "Kwaliteitswaardecode": "00",
+            "OpdrachtgevendeInstantie": "RIKZ_VERWACHT",
+            "Referentievlak": "NVT",
+            "Statuswaarde": "Ongecontroleerd"
+          }
+        },
+        {
+          "Meetwaarde": {
+            "Waarde_Alfanumeriek": "244",
+            "Waarde_Numeriek": 244
+          },
+          "Tijdstip": "2026-08-30T05:50:00.000+01:00",
+          "WaarnemingMetadata": {
+            "Bemonsteringshoogte": "0",
+            "Kwaliteitswaardecode": "00",
+            "OpdrachtgevendeInstantie": "RIKZ_VERWACHT",
+            "Referentievlak": "NVT",
+            "Statuswaarde": "Ongecontroleerd"
+          }
+        },
+        {
+          "Meetwaarde": {
+            "Waarde_Alfanumeriek": "245",
+            "Waarde_Numeriek": 245
+          },
+          "Tijdstip": "2026-08-30T06:00:00.000+01:00",
+          "WaarnemingMetadata": {
+            "Bemonsteringshoogte": "0",
+            "Kwaliteitswaardecode": "00",
+            "OpdrachtgevendeInstantie": "RIKZ_VERWACHT",
+            "Referentievlak": "NVT",
+            "Statuswaarde": "Ongecontroleerd"
+          }
+        },
+        {
+          "Meetwaarde": {
+            "Waarde_Alfanumeriek": "246",
+            "Waarde_Numeriek": 246
+          },
+          "Tijdstip": "2026-08-30T06:10:00.000+01:00",
+          "WaarnemingMetadata": {
+            "Bemonsteringshoogte": "0",
+            "Kwaliteitswaardecode": "00",
+            "OpdrachtgevendeInstantie": "RIKZ_VERWACHT",
+            "Referentievlak": "NVT",
+            "Statuswaarde": "Ongecontroleerd"
+          }
+        },
+        {
+          "Meetwaarde": {
+            "Waarde_Alfanumeriek": "247",
+            "Waarde_Numeriek": 247
+          },
+          "Tijdstip": "2026-08-30T06:20:00.000+01:00",
+          "WaarnemingMetadata": {
+            "Bemonsteringshoogte": "0",
+            "Kwaliteitswaardecode": "00",
+            "OpdrachtgevendeInstantie": "RIKZ_VERWACHT",
+            "Referentievlak": "NVT",
+            "Statuswaarde": "Ongecontroleerd"
+          }
+        }
+      ]
+    }
+  ]
+}

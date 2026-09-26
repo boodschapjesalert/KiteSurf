@@ -1,0 +1,332 @@
+<style>
+  /* Lichte kleuren zijn de standaard-fallback van elke --tg-theme-*-variabele: deze webapp draait
+     niet als Telegram Mini App (zie README.md "Aannames") dus die tg-theme-variabelen staan in de
+     praktijk nooit echt, en de fallback bepaalt altijd het uiterlijk. Donkere modus (themaKnop in
+     JavaScript.html) herdefinieert daarom diezelfde fallback-waarden hieronder, via zowel
+     prefers-color-scheme (systeemvoorkeur, als er geen expliciete keuze is opgeslagen) als het
+     data-theme-attribuut (expliciete toggle-keuze, wint in beide richtingen van het systeem). */
+  :root {
+    --bg: var(--tg-theme-bg-color, #ffffff);
+    --tekst: var(--tg-theme-text-color, #1c1c1e);
+    --hint: var(--tg-theme-hint-color, #8e8e93);
+    --knop-bg: var(--tg-theme-button-color, #2f80ed);
+    --knop-tekst: var(--tg-theme-button-text-color, #ffffff);
+    --sectie-bg: var(--tg-theme-secondary-bg-color, #f2f2f7);
+    --groen: #2ecc71;
+    --oranje: #f5a623;
+    --rood: #e74c3c;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: var(--tg-theme-bg-color, #0d0d0f);
+      --tekst: var(--tg-theme-text-color, #f2f2f3);
+      --hint: var(--tg-theme-hint-color, #9a9aa0);
+      --knop-bg: var(--tg-theme-button-color, #3d8bfd);
+      --knop-tekst: var(--tg-theme-button-text-color, #ffffff);
+      --sectie-bg: var(--tg-theme-secondary-bg-color, #1c1c1f);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --bg: var(--tg-theme-bg-color, #0d0d0f);
+    --tekst: var(--tg-theme-text-color, #f2f2f3);
+    --hint: var(--tg-theme-hint-color, #9a9aa0);
+    --knop-bg: var(--tg-theme-button-color, #3d8bfd);
+    --knop-tekst: var(--tg-theme-button-text-color, #ffffff);
+    --sectie-bg: var(--tg-theme-secondary-bg-color, #1c1c1f);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--tekst);
+    font-size: 16px;
+  }
+
+  #app { padding: 12px 14px 32px; max-width: 480px; margin: 0 auto; }
+
+  .topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .topbar h1 { font-size: 20px; margin: 0; display: flex; align-items: center; gap: 8px; }
+  .app-icoon { width: 40px; height: 40px; border-radius: 8px; image-rendering: pixelated; flex: none; }
+
+  .icoonknop {
+    background: none; border: none; font-size: 20px; padding: 6px 10px; cursor: pointer;
+  }
+  .topbar-knoppen { display: flex; }
+
+  .link-banner {
+    background: var(--sectie-bg); border-radius: 10px; padding: 10px 12px; margin-bottom: 12px;
+    font-size: 13px; color: var(--hint);
+  }
+  .link-banner-url {
+    margin-top: 6px; font-family: monospace; font-size: 12px; color: var(--tekst);
+    word-break: break-all; user-select: all;
+  }
+
+  .uitleg { font-size: 13px; color: var(--hint); margin: 0 0 12px; }
+
+  .versie-marker { text-align: center; font-size: 11px; color: var(--hint); margin-top: 24px; opacity: 0.7; }
+  .versie-marker + .versie-marker { margin-top: 4px; }
+  .versie-marker a { color: inherit; }
+
+  .configuratie-banner {
+    background: rgba(245, 166, 35, 0.15); border: 1px solid var(--oranje); border-radius: 10px;
+    padding: 10px 12px; margin-bottom: 12px; font-size: 13px;
+  }
+  .configuratie-banner button { display: block; margin-top: 8px; }
+
+  /* Eenmalige welkomst-kaart voor een nog niet geconfigureerd profiel (zie init() in
+     JavaScript.html) — legt uit WAAROM de windcriteria nodig zijn, vóór ⚙️ Instellingen vanzelf
+     opent. Bewust GEEN position:fixed/overlay: binnen Apps Script's HtmlService-iframe-inpakking
+     (die zelf al met een eigen schaal/transform werkt, zie de "CSS-transformed" klik-problemen
+     die dat elders in dit project al gaf) is fixed-positionering onbetrouwbaar — klikken kwamen
+     op de verkeerde plek terecht. Een gewone, in-flow kaart bovenaan #app (met een gedimde
+     achtergrond eromheen als visueel effect, niet als aparte laag) is net zo opvallend en werkt
+     overal betrouwbaar. */
+  .onboarding-kaart {
+    background: var(--bg); color: var(--tekst); border: 2px solid var(--knop-bg); border-radius: 14px;
+    padding: 20px 18px; margin-bottom: 14px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  }
+  .onboarding-kaart h2 { margin: 0 0 10px; font-size: 19px; }
+  .onboarding-kaart p { margin: 0 0 16px; font-size: 14px; line-height: 1.5; color: var(--hint); }
+  .onboarding-kaart button { width: 100%; }
+
+  .zoekbalk { display: flex; gap: 8px; margin-bottom: 8px; }
+  .zoekbalk input {
+    flex: 1; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--hint);
+    background: var(--sectie-bg); color: var(--tekst); font-size: 15px;
+  }
+
+  button {
+    background: var(--knop-bg); color: var(--knop-tekst); border: none; border-radius: 10px;
+    padding: 10px 16px; font-size: 15px; cursor: pointer;
+  }
+  button.secundair { background: var(--sectie-bg); color: var(--tekst); }
+  button.klein { padding: 6px 10px; font-size: 13px; border-radius: 8px; }
+
+  /* Zelfde uiterlijk als button.klein, voor de Telegram-koppel-link (een <a>, geen <button>,
+     zodat de standaard <base target="_top"> de deep link naar t.me buiten de HtmlService-iframe
+     opent zonder JS-navigatie nodig te hebben). */
+  a.klein {
+    background: var(--knop-bg); color: var(--knop-tekst); border: none; border-radius: 8px;
+    padding: 6px 10px; font-size: 13px; text-decoration: none;
+  }
+
+  .lijst { list-style: none; padding: 0; margin: 0 0 10px; }
+  .lijst li {
+    padding: 10px 12px; background: var(--sectie-bg); border-radius: 10px; margin-bottom: 6px;
+    display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  }
+
+  .vergelijk-lijst { display: flex; flex-direction: column; gap: 8px; margin-bottom: 4px; }
+  .vergelijk-rij {
+    display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px;
+    background: var(--sectie-bg); cursor: pointer; border-left: 4px solid transparent;
+  }
+  /* De beste locatie krijgt dezelfde groene rand als een goede dagkaart — zo springt "dit is je
+     beste keuze nu" er meteen uit, zonder de score-cijfers te hoeven vergelijken. */
+  .vergelijk-rij.beste { border-left-color: var(--groen); }
+  .vergelijk-naam { font-weight: 600; flex: 1; }
+  .vergelijk-score { font-variant-numeric: tabular-nums; color: var(--hint); flex: none; }
+  .vergelijk-beste-label { font-size: 12px; color: var(--groen); font-weight: 600; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  .chip {
+    background: var(--sectie-bg); border-radius: 20px; padding: 8px 14px; cursor: pointer;
+    font-size: 14px; border: 1px solid transparent;
+  }
+  .chip.actief { border-color: var(--knop-bg); }
+
+  .weer-header { display: flex; justify-content: space-between; align-items: center; }
+  .weer-header h2 { font-size: 18px; margin: 4px 0 10px; }
+
+  .dagkaarten { display: flex; flex-direction: column; gap: 10px; }
+  .dagkaart {
+    background: var(--sectie-bg); border-radius: 14px; padding: 12px 14px;
+    border-left: 5px solid transparent;
+  }
+  /* Steviger kleursignaal dan alleen het kleine bolletje: een gekleurde rand + subtiele tint die
+     uitvloeit naar de gewone kaartachtergrond — zo is het go/no-go-oordeel al zichtbaar zonder
+     de tekst te hoeven lezen. */
+  .dagkaart-groen { border-left-color: var(--groen); background: linear-gradient(to right, rgba(46, 204, 113, 0.14), var(--sectie-bg) 45%); }
+  .dagkaart-oranje { border-left-color: var(--oranje); background: linear-gradient(to right, rgba(245, 166, 35, 0.14), var(--sectie-bg) 45%); }
+  .dagkaart-rood { border-left-color: var(--rood); background: linear-gradient(to right, rgba(231, 76, 60, 0.14), var(--sectie-bg) 45%); }
+  .dagkaart-rij { display: flex; align-items: center; justify-content: space-between; gap: 10px; cursor: pointer; }
+  .kleurbol { width: 16px; height: 16px; border-radius: 50%; display: inline-block; margin-right: 8px; }
+  .kleurbol.groen { background: var(--groen); }
+  .kleurbol.oranje { background: var(--oranje); }
+  .kleurbol.rood { background: var(--rood); }
+  .datum { font-weight: 600; }
+  .indicatief { font-size: 11px; color: var(--hint); border: 1px solid var(--hint); border-radius: 999px; padding: 0 6px; margin-left: 2px; white-space: nowrap; }
+  .score { font-variant-numeric: tabular-nums; color: var(--hint); flex: none; }
+
+  .sparkline { width: 44px; height: 22px; flex: none; }
+  .sparkline polyline { fill: none; stroke: var(--knop-bg); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; opacity: 0.8; vector-effect: non-scaling-stroke; }
+
+  .dagkaart-meta {
+    display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin-top: 4px;
+    font-size: 13px; color: var(--hint);
+  }
+  .zonsondergang { margin-left: auto; }
+  .windbadge { display: inline-flex; align-items: center; gap: 4px; color: var(--tekst); }
+  .windbadge-onbekend { color: var(--hint); }
+  .windpijl { width: 15px; height: 15px; fill: var(--knop-bg); flex: none; transition: transform 0.2s; }
+  .windkn { font-variant-numeric: tabular-nums; }
+
+  .weerbadge { display: inline-flex; align-items: center; gap: 2px; color: var(--tekst); font-variant-numeric: tabular-nums; }
+  .weerbadge-onbekend { color: var(--hint); }
+
+  .getijbadge { display: inline-flex; align-items: center; gap: 2px; color: var(--tekst); font-variant-numeric: tabular-nums; }
+  .getijbadge-onbekend { color: var(--hint); }
+
+  .detail { margin-top: 10px; display: none; }
+  .detail.open { display: block; }
+
+  .schakelaar { display: flex; gap: 6px; margin-bottom: 8px; }
+  .schakelaar button { padding: 6px 12px; font-size: 13px; }
+
+  table.uurtabel { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.uurtabel th, table.uurtabel td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--hint); }
+  .uurtabel-samenvatting td { padding: 6px; border-bottom: 1px solid var(--hint); }
+  .uurtabel-samenvatting button { width: 100%; }
+
+  .grafiek-rij { display: flex; align-items: flex-start; gap: 6px; }
+  .grafiek-yas {
+    display: flex; flex-direction: column; justify-content: space-between;
+    height: 90px; margin-top: 6px; font-size: 10px; color: var(--hint); text-align: right;
+    /* Vaste breedte zodat de (lege) y-as-kolom boven de regenrij exact even breed is als deze. */
+    min-width: 20px; flex: none;
+  }
+  .grafiek-wrapper { position: relative; flex: 1; min-width: 0; }
+  .grafiek { display: flex; align-items: flex-end; gap: 3px; height: 90px; margin-top: 6px; }
+  .grafiek .balk { flex: 1; background: var(--knop-bg); border-radius: 3px 3px 0 0; min-height: 2px; }
+  .grafiek-labels { display: flex; gap: 3px; margin-top: 2px; }
+  .grafiek-labels .grafiek-label { flex: 1; text-align: center; font-size: 10px; color: var(--hint); }
+  .grafiek-legenda { margin: 4px 0 0; }
+
+  /* Regenrij boven de grafiek: zelfde kolombreedte/gap als .grafiek, zodat elke druppel exact
+     boven zijn eigen uurbalk staat. */
+  /* flex:1 + min-width:0 is essentieel: zonder dat krimpt de rij tot de breedte van alleen de
+     gevulde cellen en staan de druppels niet meer boven hun eigen uurbalk. */
+  .grafiek-regenrij { display: flex; gap: 3px; align-items: flex-end; min-height: 26px; flex: 1; min-width: 0; }
+  .grafiek-regencel {
+    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+    line-height: 1.1; min-width: 0; overflow: hidden;
+  }
+  .regen-druppel { font-size: 11px; }
+  .regen-mm { font-size: 9px; color: var(--hint); font-variant-numeric: tabular-nums; }
+  /* Onzichtbare kolom die exact even breed is als de echte y-as, zodat de regenrij erboven
+     precies met de grafiekkolommen uitlijnt. */
+  .grafiek-yas-leeg { height: auto; margin-top: 0; visibility: hidden; }
+
+  .dagkaart-samenvatting {
+    margin-top: 8px; font-size: 13px; line-height: 1.45; color: var(--tekst);
+    background: rgba(128, 128, 128, 0.1); border-radius: 8px; padding: 8px 10px;
+  }
+
+  .radar-weergave { display: flex; flex-direction: column; gap: 6px; }
+  .radar-weergave .uitleg { margin: 0; }
+
+  /* Ingezoomde tegelkaart: het .radar-vlak is groter dan het kader en wordt via transform
+     verschoven/geschaald zodat de spot in het midden valt; overflow knipt de rest weg. */
+  .radar-kaart {
+    position: relative; width: 100%; aspect-ratio: 4 / 3; overflow: hidden;
+    border-radius: 8px; background: var(--sectie-bg);
+  }
+  .radar-vlak { position: absolute; top: 0; left: 0; transform-origin: 0 0; }
+  .radar-tegel { position: absolute; display: block; width: 256px; height: 256px; }
+  /* Alle neerslagbeelden staan tegelijk in de DOM; alleen de actieve is zichtbaar. Dat animeert
+     vloeiend zonder per stap opnieuw te laden. */
+  .radar-beeld { position: absolute; opacity: 0; }
+  .radar-beeld.actief { opacity: 0.85; }
+  /* Een tijdstap die de bron niet leverde (incidentele 502) wordt overgeslagen i.p.v. als
+     gebroken-afbeelding-icoon over de kaart te vallen. */
+  .radar-beeld.mislukt { display: none; }
+  /* "Heel Nederland": Buienradar's eigen volledige kaartbeeld staat los van .radar-vlak (dat wordt
+     voor de ingezoomde weergave geschaald/verschoven — zie renderRadarGeografie_). Het beeld zelf
+     toont altijd hetzelfde vaste gebied inclusief een flink stuk Engeland/België/Duitsland
+     (gebruikersrapport: "erg ver uitgezoomd... grote delen van België en Duitsland").
+     Uniform (!) 1,4x uitvergroot, gecentreerd: Engeland valt er zo goed als uit, met nog een dunne
+     rand België/Duitsland — vergelijkbaar met hoe buienradar.nl zelf de kaart bijsnijdt.
+     Nadrukkelijk BREEDTE EN HOOGTE GELIJK houden (niet los instellen): een eerdere, niet-uniforme
+     versie (190%/155%, richting rechtsonder verschoven) rekte de kaart oost-westelijk merkbaar
+     verder op dan noord-zuid, wat er zowel scheefgetrokken ("lelijk", gebruikersrapport) uitzag als
+     Groningen/Drenthe/Overijssel/de Achterhoek gewoon buiten beeld liet vallen — pas zichtbaar
+     geworden toen een test-schermafbeelding voor het eerst het hele kader liet zien i.p.v. een
+     afgekapt deel. Empirisch bepaald: meerdere varianten naast elkaar tegen de live afbeelding
+     getest, mét het volledige kader in beeld. */
+  .radar-vol-vlak { position: absolute; inset: 0; overflow: hidden; }
+  .radar-beeld-vol { width: 140%; height: 140%; left: -20%; top: -20%; opacity: 0; }
+  .radar-beeld-vol.actief { opacity: 1; }
+  .radar-spot {
+    position: absolute; left: 50%; top: 50%; width: 16px; height: 16px; border-radius: 50%;
+    border: 3px solid #d32f2f; background: rgba(211, 47, 47, 0.3);
+    transform: translate(-50%, -50%); box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.85);
+    pointer-events: none; z-index: 5;
+  }
+  .radar-balk { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .radar-balk .radar-weergave-schakelaar { margin-left: auto; margin-bottom: 0; }
+  .radar-tijd { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  /* Windsnelheid-lijn bovenop de score-balken (zie bouwGrafiekWindLijnSvg) — absoluut
+     gepositioneerd over dezelfde .grafiek-hoogte, non-scaling-stroke houdt de lijndikte
+     consistent ondanks de non-uniforme viewBox-schaling (preserveAspectRatio="none"). */
+  .grafiek-windlijn { position: absolute; top: 0; left: 0; width: 100%; height: 90px; pointer-events: none; overflow: visible; }
+  .grafiek-windlijn polyline {
+    fill: none; stroke: var(--tekst); stroke-opacity: 0.55; stroke-width: 2;
+    stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke;
+  }
+
+  .veldrij { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--hint); }
+  .veldrij label { flex: 1; font-size: 14px; }
+  .veldrij input { width: 90px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--hint); background: var(--bg); color: var(--tekst); }
+  .veldgroep { margin-bottom: 14px; }
+  .veldgroep h3 { font-size: 15px; margin: 16px 0 4px; }
+  /* Score-berekening staat in een <details>-uitklapmenu (gevorderde instelling, standaard dicht). */
+  details.veldgroep summary { cursor: pointer; }
+  details.veldgroep summary h3 { margin: 16px 0 4px; }
+  details.veldgroep table.uurtabel input[type="number"] { width: 80px; }
+
+  /* Duidelijk afgebakend sub-blok binnen een veldgroep — gebruikt bij Meldingen om per Telegram-
+     bericht (samenvatting/alert) de bijbehorende velden visueel te groeperen, i.p.v. één platte
+     lijst waarbij niet meteen duidelijk is welk veld bij welk bericht hoort. */
+  .veldsubgroep {
+    background: var(--sectie-bg); border-left: 3px solid var(--knop-bg); border-radius: 8px;
+    padding: 10px 12px; margin: 10px 0;
+  }
+  .veldsubgroep h4 { font-size: 14px; margin: 0 0 4px; }
+  .veldsubgroep .uitleg { margin-bottom: 8px; }
+  .veldsubgroep .veldrij { border-bottom-color: rgba(128, 128, 128, 0.25); }
+
+  .knoppenrij { display: flex; gap: 8px; margin-top: 14px; }
+
+  .laad { text-align: center; padding: 10px; margin-top: 10px; border-radius: 10px; color: var(--hint); }
+
+  /* Vriendelijkere foutweergave: een gewone tekstballon met rand i.p.v. een rode monospace-
+     debug-dump — de inhoud kan nog steeds een technische melding zijn, maar oogt niet meer als een. */
+  .fout {
+    background: rgba(231, 76, 60, 0.1); border: 1px solid rgba(231, 76, 60, 0.35);
+    color: var(--tekst); border-radius: 10px; padding: 12px 14px; margin-top: 10px;
+    text-align: left; font-size: 13px; white-space: pre-wrap;
+  }
+
+  /* Skeleton-laadstatus i.p.v. een lege/oude kaartenlijst tijdens het ophalen van het weeroordeel. */
+  .dagkaart.skeleton { background: var(--sectie-bg); border-left-color: transparent; }
+  .skeleton-lijn {
+    height: 12px; border-radius: 6px; margin-bottom: 8px;
+    background: linear-gradient(90deg, var(--sectie-bg) 25%, rgba(128, 128, 128, 0.25) 37%, var(--sectie-bg) 63%);
+    background-size: 400% 100%;
+    animation: skeleton-schuif 1.4s ease infinite;
+  }
+  .skeleton-lijn:last-child { margin-bottom: 0; }
+  .skeleton-lijn-kort { width: 45%; }
+  .skeleton-lijn-lang { width: 75%; height: 9px; }
+  @keyframes skeleton-schuif {
+    0% { background-position: 100% 50%; }
+    100% { background-position: 0 50%; }
+  }
+</style>

@@ -1,0 +1,190 @@
+<TaskerData sr="" dvi="1" tv="6.6.20">
+	<Task sr="task311">
+		<cdate>1788111752683</cdate>
+		<edate>1788114269216</edate>
+		<id>311</id>
+		<nme>WidgetTssk</nme>
+		<pri>100</pri>
+		<Action sr="act0" ve="7">
+			<code>339</code>
+			<Bundle sr="arg0">
+				<Vals sr="val">
+					<net.dinglisch.android.tasker.RELEVANT_VARIABLES>&lt;StringArray sr=""&gt;&lt;_array_net.dinglisch.android.tasker.RELEVANT_VARIABLES0&gt;%http_cookies
+Cookies
+The cookies the server sent in the response in the Cookie:COOKIE_VALUE format. You can use this directly in the 'Headers' field of the HTTP Request action&lt;/_array_net.dinglisch.android.tasker.RELEVANT_VARIABLES0&gt;&lt;_array_net.dinglisch.android.tasker.RELEVANT_VARIABLES1&gt;%http_data
+Data
+Data that the server responded from the HTTP request.&lt;/_array_net.dinglisch.android.tasker.RELEVANT_VARIABLES1&gt;&lt;_array_net.dinglisch.android.tasker.RELEVANT_VARIABLES2&gt;%http_file_output
+File Output
+Will always contain the file's full path even if you specified a directory as the File to save.&lt;/_array_net.dinglisch.android.tasker.RELEVANT_VARIABLES2&gt;&lt;_array_net.dinglisch.android.tasker.RELEVANT_VARIABLES3&gt;%http_response_code
+Response Code
+The HTTP Code the server responded&lt;/_array_net.dinglisch.android.tasker.RELEVANT_VARIABLES3&gt;&lt;_array_net.dinglisch.android.tasker.RELEVANT_VARIABLES4&gt;%http_headers()
+Response Headers
+The HTTP Headers the server sent in the response. Each header is in the 'key:value' format&lt;/_array_net.dinglisch.android.tasker.RELEVANT_VARIABLES4&gt;&lt;_array_net.dinglisch.android.tasker.RELEVANT_VARIABLES5&gt;%http_response_length
+Response Length
+The size of the response in bytes&lt;/_array_net.dinglisch.android.tasker.RELEVANT_VARIABLES5&gt;&lt;/StringArray&gt;</net.dinglisch.android.tasker.RELEVANT_VARIABLES>
+					<net.dinglisch.android.tasker.RELEVANT_VARIABLES-type>[Ljava.lang.String;</net.dinglisch.android.tasker.RELEVANT_VARIABLES-type>
+				</Vals>
+			</Bundle>
+			<Int sr="arg1" val="0"/>
+			<Int sr="arg10" val="0"/>
+			<Int sr="arg11" val="0"/>
+			<Int sr="arg12" val="1"/>
+			<Str sr="arg2" ve="3">https://script.google.com/macros/s/AKfycbxaxYVjqJxb4IK5ep3KrVmtrMJHCVFf3j68kVzz0JhxBtKWyzYag7yI5jVF6R5RC0QY8w/exec?actie=widget&amp;id=658af1f7-5faa-4d04-9116-7617a90d67ae</Str>
+			<Str sr="arg3" ve="3"/>
+			<Str sr="arg4" ve="3"/>
+			<Str sr="arg5" ve="3"/>
+			<Str sr="arg6" ve="3"/>
+			<Str sr="arg7" ve="3"/>
+			<Int sr="arg8" val="30"/>
+			<Int sr="arg9" val="0"/>
+		</Action>
+		<Action sr="act1" ve="7">
+			<code>129</code>
+			<Str sr="arg0" ve="3">var data = JSON.parse(local("http_data"));
+
+if (data.fout) {
+    setLocal("kleur", "#757575");
+    setLocal("spotnaam", "Kite Weer App");
+    setLocal("bijgewerkt", "fout bij ophalen");
+    setLocal("verdict", data.fout);
+    setLocal("score", "-");
+    setLocal("windnu", "");
+    setLocal("windvlagen", "");
+    setLocal("grafiekurl", "");
+} else {
+    var kleurHex = data.kleur === "groen" ? "#2E7D32" : data.kleur === "oranje" ? "#F57F17" : "#C62828";
+    var windnu = (data.windKnopen != null ? data.windKnopen + " kn" : "\u2013") +
+        (data.windrichtingKompas ? " \u00b7 " + data.windrichtingKompas : "");
+    var windvlagen = data.windvlaagKnopen != null ? "vlagen tot " + data.windvlaagKnopen + " kn" : "";
+
+    setLocal("kleur", kleurHex);
+    setLocal("spotnaam", data.spotnaam);
+    setLocal("bijgewerkt", "bijgewerkt " + data.bijgewerkt);
+    setLocal("verdict", data.verdict);
+    setLocal("score", String(data.score));
+    setLocal("windnu", windnu);
+    setLocal("windvlagen", windvlagen);
+    // Leeg als de grafiek niet gebouwd kon worden (zie Code.gs: widgetJson_) - Actie 2 laat het
+    // Image-element dan gewoon weg i.p.v. een kapot-plaatje-icoon te tonen.
+    setLocal("grafiekurl", data.grafiekUrl || "");
+}</Str>
+			<Str sr="arg1" ve="3"/>
+			<Int sr="arg2" val="1"/>
+			<Int sr="arg3" val="45"/>
+		</Action>
+		<Action sr="act2" ve="7">
+			<code>129</code>
+			<Str sr="arg0" ve="3">var kolomKinderen = [
+    {
+        type: "Row",
+        fillMaxWidth: true,
+        verticalAlignment: "Center",
+        children: [
+            { type: "Text", text: spotnaam, color: "#FFFFFF", textSize: "16", bold: true },
+            { type: "Spacer", isWeighted: true },
+            { type: "Text", text: bijgewerkt, color: "#E0E0E0", textSize: "12" }
+        ]
+    },
+    {
+        type: "Text",
+        text: verdict,
+        color: "#F5F5F5",
+        textSize: "14",
+        padding: { top: 4, bottom: 8 }
+    },
+    {
+        type: "Row",
+        fillMaxWidth: true,
+        verticalAlignment: "Center",
+        children: [
+            { type: "Text", text: score + "/10", color: "#FFFFFF", textSize: "50", bold: true },
+            { type: "Spacer", isWeighted: true },
+            {
+                type: "Column",
+                horizontalAlignment: "End",
+                children: [
+                    { type: "Text", text: windnu, color: "#FFFFFF", textSize: "24", align: "Right" },
+                    { type: "Text", text: windvlagen, color: "#E0E0E0", textSize: "14", align: "Right" }
+                ]
+            }
+        ]
+    }
+];
+
+// Grafiek onderaan, alleen als data.grafiekUrl bij het ophalen daadwerkelijk gevuld was (Actie 1
+// zet 'm dan op "") - anders geen Image-element, i.p.v. een kapot-plaatje-icoon in de widget.
+if (grafiekurl) {
+    kolomKinderen.push({
+        type: "Image",
+        url: grafiekurl,
+        contentScale: "Fit",
+        fillMaxWidth: true,
+        padding: { top: 8 }
+    });
+}
+
+var layout = {
+    type: "Box",
+    backgroundColor: kleur,
+    fillMaxSize: true,
+    padding: 16,
+    children: [
+        {
+            type: "Column",
+            fillMaxSize: true,
+            children: kolomKinderen
+        }
+    ]
+};
+
+setLocal("widgetlayout", JSON.stringify(layout));</Str>
+			<Str sr="arg1" ve="3"/>
+			<Int sr="arg2" val="1"/>
+			<Int sr="arg3" val="45"/>
+		</Action>
+		<Action sr="act3" ve="7">
+			<code>548</code>
+			<Str sr="arg0" ve="3">%widgetlayout</Str>
+			<Int sr="arg1" val="0"/>
+			<Str sr="arg10" ve="3"/>
+			<Int sr="arg11" val="1"/>
+			<Int sr="arg12" val="0"/>
+			<Str sr="arg13" ve="3"/>
+			<Int sr="arg14" val="0"/>
+			<Str sr="arg15" ve="3"/>
+			<Int sr="arg2" val="0"/>
+			<Str sr="arg3" ve="3"/>
+			<Str sr="arg4" ve="3"/>
+			<Str sr="arg5" ve="3"/>
+			<Str sr="arg6" ve="3"/>
+			<Str sr="arg7" ve="3"/>
+			<Str sr="arg8" ve="3"/>
+			<Int sr="arg9" val="1"/>
+		</Action>
+		<Action sr="act4" ve="7">
+			<code>461</code>
+			<Bundle sr="arg0">
+				<Vals sr="val">
+					<net.dinglisch.android.tasker.RELEVANT_VARIABLES>&lt;StringArray sr=""/&gt;</net.dinglisch.android.tasker.RELEVANT_VARIABLES>
+					<net.dinglisch.android.tasker.RELEVANT_VARIABLES-type>[Ljava.lang.String;</net.dinglisch.android.tasker.RELEVANT_VARIABLES-type>
+				</Vals>
+			</Bundle>
+			<Str sr="arg1" ve="3">Kite9-5</Str>
+			<Str sr="arg10" ve="3"/>
+			<Str sr="arg11" ve="3"/>
+			<Str sr="arg12" ve="3"/>
+			<Str sr="arg13" ve="3">%widgetlayout</Str>
+			<Int sr="arg14" val="1"/>
+			<Str sr="arg15" ve="3">4</Str>
+			<Int sr="arg16" val="1"/>
+			<Str sr="arg2" ve="3">Custom</Str>
+			<Str sr="arg3" ve="3">#57006EFF</Str>
+			<Str sr="arg4" ve="3">Weer Kiten?</Str>
+			<Str sr="arg5" ve="3"/>
+			<Str sr="arg6" ve="3"/>
+			<Str sr="arg7" ve="3"/>
+			<Str sr="arg8" ve="3"/>
+			<Str sr="arg9" ve="3"/>
+		</Action>
+	</Task>
+</TaskerData>
