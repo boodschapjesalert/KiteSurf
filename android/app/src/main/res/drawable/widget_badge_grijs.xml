@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Gevulde badge/chip met het oordeel (score in het overzicht, dag-chips, dagkaarten). -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <corners android:radius="12dp" />
+    <solid android:color="#FF607D8B" />
+</shape>

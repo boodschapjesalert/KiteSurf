@@ -1084,13 +1084,25 @@ bewaar-link, de Telegram-koppeling en de Tasker-widget-uitleg anders in de app. 
 opgehaalde weeroordeel per locatie wordt lokaal bewaard: zonder verbinding toont de app dat, met
 de melding van welk tijdstip het is.
 
-**Widget.** Een echte Android-widget (`KiteweerWidget.java`), geen Tasker meer: oordeel van
-vandaag (achtergrondkleur = groen/oranje/rood), score, wind + vlagen, de eerstvolgende
-kitemogelijkheid, en bij voldoende hoogte een grafiek van vandaag (balken = wind, kleur = oordeel
-per uur, lijn = vlagen — zelfde opbouw als de Grafiek-tab). Volgt de eerste favoriete locatie.
-Leest het profiel rechtstreeks van de telefoon, dus er is geen koppelstap. De grafiek tekent de
-widget zelf uit `uren` in de widget-data (i.p.v. de Slides/Drive-afbeelding van de
-Tasker-widget, die per gebruikers-ID in Drive werd opgeslagen). Ondersteunt donkere modus.
+**Widget.** Een echte Android-widget (`KiteweerWidget.java`), geen Tasker meer. Vaste kop (spot,
+tijd van bijwerken — tik erop om meteen te verversen) met daaronder een **scrollbare lijst**
+(`KiteweerWidgetService.java`):
+
+1. **Overzicht** (eerste scherm): score-badge en oordeel van vandaag (achtergrondkleur =
+   groen/oranje/rood), wind + vlagen, de eerstvolgende kitemogelijkheid en een strook chips met
+   het oordeel per dag ("za 7.4").
+2. **Per dag van de Voorspellingshorizon een kaart** met score, beste venster ("13:00–18:00"),
+   oordeel/wind en een grafiek 09:00-20:00 (`KiteweerGrafiek.java`): balken = wind (kleur =
+   oordeel per uur), lijn = vlagen, pijltjes = windrichting, druppels = regen (≥ 0,2 mm), het
+   beste venster als band, bij vandaag een stippellijn op "nu". Alle dagen delen één kn-schaal,
+   zodat je tijdens het scrollen dagen kunt vergelijken. De grafiek wordt zo hoog dat één kaart
+   ongeveer de zichtbare lijst vult.
+
+Standaardmaat 4x3 (het overzicht plus een glimp van de eerste dagkaart), vrij te vergroten/verkleinen.
+Volgt de eerste favoriete locatie en leest het profiel rechtstreeks van de telefoon, dus er is geen
+koppelstap. De gegevens komen uit `widget.dagen` (per dag gebouwd door `bouwWidgetDag` in
+`src/logica/widgetData.js`); een backend van vóór v98 stuurt die nog niet, dan toont de widget
+alleen vandaag (uit `uren`). Ondersteunt donkere modus.
 
 **Meldingen.** Dezelfde twee vormen als in Telegram (dagelijkse samenvatting, directe alert),
 nu als Android-melding. Welke meldingen er komen, bepaalt de backend

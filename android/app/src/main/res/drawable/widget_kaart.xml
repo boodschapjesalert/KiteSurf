@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Dagkaart in de widgetlijst: licht vlak over de (oordeel-gekleurde) widgetachtergrond. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <corners android:radius="14dp" />
+    <solid android:color="#B3FFFFFF" />
+</shape>

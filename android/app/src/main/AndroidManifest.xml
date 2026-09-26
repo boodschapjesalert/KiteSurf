@@ -37,6 +37,12 @@
                 android:resource="@xml/kiteweer_widget_info" />
         </receiver>
 
+        <!-- Vult de scrollbare lijst van de widget (overzicht + grafiek per dag). -->
+        <service
+            android:name=".KiteweerWidgetService"
+            android:exported="false"
+            android:permission="android.permission.BIND_REMOTEVIEWS" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
