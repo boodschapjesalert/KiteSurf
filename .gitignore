@@ -4,3 +4,5 @@ dist/
 .clasprc.json
 *.checktmp.js
 takeout-*.zip
+# Android-app: build-output van build-app.js
+www/

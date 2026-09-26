@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Meldingsicoon (monochroom): een kite-boog met lijnen naar de kiter. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M2,9C5,4 19,4 22,9L19.5,10C17,7 7,7 4.5,10Z" />
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1"
+        android:pathData="M4.5,10L12,19M19.5,10L12,19" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M12,19m-2,0a2,2 0,1 1,4 0a2,2 0,1 1,-4 0" />
+</vector>

@@ -11,7 +11,7 @@
 // Handmatig ophogen bij elke betekenisvolle wijziging/deploy — zichtbaar onderin de app, zodat
 // eenvoudig te controleren is of een nieuwe versie daadwerkelijk live staat (i.p.v. een gecachete
 // oudere versie in de browser).
-var KITEWEER_VERSIE = 'v96 (21 sep 2026)';
+var KITEWEER_VERSIE = 'v97 (26 sep 2026)';
 
 /**
  * Verkort een URL via TinyURL's geauthenticeerde API (eigen account + API-token in Script
@@ -199,8 +199,20 @@ function widgetJson_(e) {
   var json = (function () {
     var gevonden = widgetProfielEnLocatie_(e);
     if (gevonden.fout) return gevonden;
-    var profiel = gevonden.profiel;
-    var locatie = gevonden.locatie;
+    return bouwWidgetData_(gevonden.profiel, gevonden.locatie, gevonden.gebruikerId);
+  })();
+
+  return ContentService.createTextOutput(JSON.stringify(json)).setMimeType(ContentService.MimeType.JSON);
+}
+
+/**
+ * De inhoud van widgetJson_ (hierboven) voor één profiel + locatie — ook gebruikt door de
+ * Android-app (verwerkAppApiVerzoek_), die het profiel zelf meestuurt i.p.v. een gebruikers-ID.
+ * `grafiekVoorGebruikerId`: alleen als die gezet is wordt de Slides/Drive-grafiek gemaakt
+ * (`grafiekUrl`, voor de Tasker-widget); de Android-widget tekent zelf een grafiek uit `uren`.
+ */
+function bouwWidgetData_(profiel, locatie, grafiekVoorGebruikerId) {
+  return (function () {
 
     var windrichting = locatie.windrichting || { besteRanges: [], acceptabeleRanges: [] };
     var instellingen = Object.assign({}, profiel.drempelwaarden, { windrichting: windrichting });
@@ -241,8 +253,9 @@ function widgetJson_(e) {
       // dagScoreVandaag.uurResultaten is al precies de vorm die bouwDagGrafiekBlob_ verwacht.
       // Filtert zelf op het vaste 09:00-20:00-grafiekvenster (GRAFIEK_START_UUR_/EIND_UUR_), niet
       // op het profiel-Dagvenster — zelfde vaste venster als de webapp's eigen Grafiek-tab.
-      var afbeelding = bouwDagGrafiekBlob_(dagScoreVandaag.uurResultaten, instellingen);
-      if (afbeelding) grafiekUrl = slaWidgetGrafiekOp_(afbeelding, gevonden.gebruikerId);
+      // Alleen voor de Tasker-widget (met gebruikers-ID): de Slides-grafiek kost ~5s.
+      var afbeelding = grafiekVoorGebruikerId ? bouwDagGrafiekBlob_(dagScoreVandaag.uurResultaten, instellingen) : null;
+      if (afbeelding) grafiekUrl = slaWidgetGrafiekOp_(afbeelding, grafiekVoorGebruikerId);
     } catch (fout) {
       grafiekUrl = null; // Grafiek-opbouw/-upload mislukt: widget blijft werken zonder afbeelding.
     }
@@ -295,10 +308,31 @@ function widgetJson_(e) {
       windvlaagKnopen: ruwVandaag && ruwVandaag.windvlaagKnopen != null ? Math.round(ruwVandaag.windvlaagKnopen) : null,
       grafiekUrl: grafiekUrl,
       volgendeKans: volgendeKans,
+      // Uurwaarden van vandaag binnen het vaste grafiekvenster (09:00-20:00, zelfde als de
+      // webapp's Grafiek-tab en bouwDagGrafiekBlob_) — de Android-widget tekent hier zelf de
+      // wind-/vlaaggrafiek mee, zonder Slides/Drive.
+      uren: widgetUren_(dagScoreVandaag.uurResultaten),
     };
   })();
+}
 
-  return ContentService.createTextOutput(JSON.stringify(json)).setMimeType(ContentService.MimeType.JSON);
+/** Compacte uurreeks voor de widget-grafiek: { uur, windKnopen, windvlaagKnopen, kleur, neerslagMm }. */
+function widgetUren_(uurResultaten) {
+  return (uurResultaten || [])
+    .filter(function (u) {
+      var uur = new Date(u.tijdstip).getHours();
+      return uur >= GRAFIEK_START_UUR_ && uur <= GRAFIEK_EIND_UUR_;
+    })
+    .map(function (u) {
+      var ruw = u.ruw || {};
+      return {
+        uur: new Date(u.tijdstip).getHours(),
+        windKnopen: ruw.windKnopen != null ? Math.round(ruw.windKnopen) : null,
+        windvlaagKnopen: ruw.windvlaagKnopen != null ? Math.round(ruw.windvlaagKnopen) : null,
+        kleur: u.kleur,
+        neerslagMm: ruw.neerslagMm != null ? Math.round(ruw.neerslagMm * 10) / 10 : null,
+      };
+    });
 }
 
 /**
@@ -322,10 +356,16 @@ function slaWidgetGrafiekOp_(afbeeldingBlob, gebruikerId) {
 }
 
 /**
- * Enige binnenkomende kanaal voor de Telegram-bot-webhook (zie TelegramBot.gs) — niet gebruikt
- * door de webapp zelf (die praat via google.script.run, niet via doPost).
+ * Binnenkomend kanaal voor de Telegram-bot-webhook (zie TelegramBot.gs) én voor de JSON-API van
+ * de Android-app (verwerkAppApiVerzoek_) — niet gebruikt door de webapp zelf (die praat via
+ * google.script.run, niet via doPost).
  */
 function doPost(e) {
+  // Android-app (zie README.md "Android-app"): herkenbaar aan een `actie`-veld, dat een
+  // Telegram-update nooit heeft. Verder dezelfde /exec-URL, zodat er geen tweede deployment nodig is.
+  var appVerzoek = leesAppApiVerzoek_(e);
+  if (appVerzoek) return appApiAntwoord_(appVerzoek);
+
   try {
     var update = JSON.parse((e && e.postData && e.postData.contents) || '{}');
     // Telegram levert een update opnieuw aan zolang het geen tijdig HTTP 200 terugziet. Dit
@@ -460,27 +500,8 @@ function getWeerOordeel(gebruikerId, locatie) {
 function vergelijkFavorieteLocaties(gebruikerId) {
   return metGebruiker_(gebruikerId, function (id) {
     var profiel = laadProfiel_(id);
-    return {
-      locaties: (profiel.favorieteLocaties || []).map(function (locatie) {
-        var vandaag;
-        try {
-          vandaag = bepaalDagOordelenVoorLocatie_(profiel, locatie, 1)[0];
-        } catch (fout) {
-          return { locatieId: locatie.id, naam: locatie.naam, fout: 'Kon weerdata niet ophalen' };
-        }
-        if (!vandaag) return { locatieId: locatie.id, naam: locatie.naam, fout: 'Geen weerdata beschikbaar' };
-        var ruw = vandaag.dagScore.besteUur ? vandaag.dagScore.besteUur.ruw : null;
-        return {
-          locatieId: locatie.id,
-          naam: locatie.naam,
-          kleur: vandaag.dagScore.kleur,
-          score: vandaag.dagScore.score,
-          ruw: ruw
-            ? { windKnopen: ruw.windKnopen, windrichtingGraden: ruw.windrichtingGraden, windvlaagKnopen: ruw.windvlaagKnopen }
-            : null,
-        };
-      }),
-    };
+    // Zelfde opbouw als de Android-app (src/logica/appApi.js).
+    return { locaties: bouwVergelijking(profiel, bepaalDagOordelenVoorLocatie_) };
   });
 }
 
@@ -551,4 +572,50 @@ function zoekLocatie(zoekterm) {
   return zoekLocatie_(zoekterm);
 }
 
+// --- JSON-API voor de Android-app --------------------------------------------------------------
+// De app bewaart het profiel op de telefoon en stuurt het bij elk verzoek mee; de backend slaat
+// voor de app niets op (geen Drive-profiel). Routering/validatie is pure logica in
+// src/logica/appApi.js (verwerkAppVerzoek), hier alleen de GAS-I/O eromheen.
 
+// Een profiel is een paar KB; ruim daarboven is geen legitiem app-verzoek.
+var APP_API_MAX_TEKENS = 200000;
+
+/** Het geparste app-verzoek, of null als de POST geen app-verzoek is (bv. een Telegram-update). */
+function leesAppApiVerzoek_(e) {
+  var inhoud = e && e.postData && e.postData.contents;
+  if (!inhoud || inhoud.length > APP_API_MAX_TEKENS) return null;
+  try {
+    var verzoek = JSON.parse(inhoud);
+    return verzoek && typeof verzoek === 'object' && typeof verzoek.actie === 'string' ? verzoek : null;
+  } catch (fout) {
+    return null;
+  }
+}
+
+function appApiAntwoord_(verzoek) {
+  var antwoord;
+  try {
+    antwoord = verwerkAppApiVerzoek_(verzoek);
+  } catch (fout) {
+    antwoord = { fout: 'Serverfout: ' + (fout && fout.message ? fout.message : fout) };
+  }
+  return ContentService.createTextOutput(JSON.stringify(antwoord)).setMimeType(ContentService.MimeType.JSON);
+}
+
+function verwerkAppApiVerzoek_(verzoek) {
+  return verwerkAppVerzoek(verzoek, {
+    dagOordelen: bepaalDagOordelenVoorLocatie_,
+    widget: function (profiel, locatie) { return bouwWidgetData_(profiel, locatie, null); },
+    zoekLocatie: zoekLocatie_,
+    deelLink: bouwDeelLink,
+    nu: function () {
+      var nu = new Date();
+      return {
+        vandaag: Utilities.formatDate(nu, 'Europe/Amsterdam', 'yyyy-MM-dd'),
+        minutenNu:
+          Number(Utilities.formatDate(nu, 'Europe/Amsterdam', 'H')) * 60 +
+          Number(Utilities.formatDate(nu, 'Europe/Amsterdam', 'm')),
+      };
+    },
+  });
+}

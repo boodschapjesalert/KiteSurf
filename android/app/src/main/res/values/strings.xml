@@ -1,0 +1,10 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Kite Weer App</string>
+    <string name="title_activity_main">Kite Weer App</string>
+    <string name="package_name">nl.kiteweer.app</string>
+    <string name="custom_url_scheme">nl.kiteweer.app</string>
+    <string name="widget_naam">Kite Weer App</string>
+    <string name="widget_beschrijving">Oordeel van vandaag, wind en je eerstvolgende kitekans</string>
+    <string name="widget_grafiek_beschrijving">Wind en vlagen per uur vandaag</string>
+</resources>

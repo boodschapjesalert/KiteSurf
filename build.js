@@ -85,4 +85,8 @@ function build() {
   console.log(`Build klaar: ${aantal} bestanden in dist/`);
 }
 
-build();
+// Alleen bouwen als dit script direct gedraaid wordt (npm run build) — build-app.js hergebruikt
+// ontdoeVanNodeModuleSyntax zonder meteen dist/ te herbouwen.
+if (require.main === module) build();
+
+module.exports = { ontdoeVanNodeModuleSyntax };

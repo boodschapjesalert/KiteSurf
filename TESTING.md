@@ -11,11 +11,14 @@ Gebruikt Node's ingebouwde test runner (`node --test`, Node ≥ 18) — geen dep
 ## Resultaat (laatste run)
 
 ```
-tests 222
-suites 62
-pass 222
+tests 296
+suites 81
+pass 296
 fail 0
 ```
+
+(26 sep 2026: +22 tests in `test/logica/appApi.test.js` voor de Android-app-API, zie
+"Android-app" hieronder.)
 
 (Was 227 — `meldingLogica.js`'s `bepaalMeldingOverzicht` en zijn tests zijn verwijderd toen de
 directe alert overging op de score/kleur-berekening in plaats van een eigen `meldingDrempel`, zie
@@ -39,10 +42,35 @@ een live GAS-omgeving testbaar is):
 | rwsGetij.js | 100.00% | 81.82% | 88.89% |
 | scoreBerekening.js | 100.00% | 81.58% | 100.00% |
 | telegramFormat.js | 100.00% | 91.30% | 100.00% |
+| appApi.js | 99.27% | 82.29% | 100.00% |
 | **Totaal** | **99.27%** | **83.79%** | **97.25%** |
 
 \* `bronParsers.js` telt losse export-references als functies; alle *gebruikte* parsers hebben
 minstens één test met een echte fixture.
+
+## Android-app
+
+- **`appApi.js`** (`test/logica/appApi.test.js`): routering/validatie van app-verzoeken (onbekende
+  actie, ontbrekend profiel, ongeldige locatie), `vergelijk` met een haperende locatie, en
+  `bepaalAppMeldingen`: samenvatting op/voor/ruim na het gekozen tijdstip, niet afvinken als
+  ophalen overal mislukte; alert voor een nieuwe groene dag, geen herhaling na tussentijds
+  terugzakken, nachtrust (uitgesteld, niet gemist), opschonen van verleden datums, historie
+  ongewijzigd bij een mislukte locatie, en "meldingen uit" laat de status ongemoeid.
+- **Android-unittests** (`android/app/src/test`, `./gradlew testReleaseUnitTest`): de HTTP-route
+  POST → 302 → GET van `KiteweerHttp` tegen een lokale mini-server, foutcodes, en de nachtrust-grens
+  van de achtergrondtaak. `./gradlew lintRelease`: 0 fouten.
+- **End-to-end tegen de échte weerbronnen** met `tools/gas-dev-server.js` (dist/*.gs in Node):
+  alle vijf acties via `POST /exec`, en de app-front-end (www/) in Chromium (Playwright): eerste
+  start → welkomstkaart → instellingen invullen/opslaan (profiel in lokale opslag) → locatie zoeken
+  en toevoegen → vergelijken → herladen (profiel blijft) — zonder JavaScript-fouten. De webapp-
+  variant van `JavaScript.html` (met een nagebootste `google.script.run`) toont ongewijzigd de
+  bewaar-link, de Telegram-koppeling en de Tasker-widget-uitleg.
+- **Live Apps Script** (curl): POST naar /exec geeft een 302 met `Access-Control-Allow-Origin: *`,
+  de GET daarna 200 + JSON met dezelfde header — de route die de WebView (fetch) en de widget
+  (`KiteweerHttp`) volgen.
+- **Niet getest (geen emulator/KVM beschikbaar):** de app op een echt toestel — widget-weergave,
+  meldingen, toestemmingsdialoog en WorkManager-timing. Zie SETUP.md stap 6 voor de handmatige
+  controle.
 
 ## Wat is getest
 

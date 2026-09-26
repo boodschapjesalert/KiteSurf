@@ -2,11 +2,22 @@
   "name": "kiteweer-app",
   "version": "1.0.0",
   "private": true,
-  "description": "Telegram Mini App 'Kite Weer App' op Google Apps Script",
+  "description": "Kite Weer App: Google Apps Script-webapp + Android-app (Capacitor)",
   "scripts": {
     "test": "node --test \"test/**/*.test.js\"",
     "build": "node build.js",
-    "push": "npm run build && clasp push"
+    "push": "npm run build && clasp push",
+    "build:app": "node build-app.js && cap sync android",
+    "apk": "npm run build:app && cd android && ./gradlew assembleRelease",
+    "dev:app": "npm run build && node build-app.js && TZ=Europe/Amsterdam node tools/gas-dev-server.js"
   },
-  "license": "UNLICENSED"
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/preferences": "^8.0.1"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.5.2"
+  }
 }

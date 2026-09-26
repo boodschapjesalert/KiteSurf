@@ -1,0 +1,6 @@
+/* Alleen in de Android-app (build-app.js): kleine aanpassingen bovenop Stylesheet.html. */
+
+/* Geen tekstselectie-lint of blauwe tik-flits op knoppen, zoals in een native app. */
+button, .chip, .icoonknop {
+  -webkit-tap-highlight-color: transparent;
+}

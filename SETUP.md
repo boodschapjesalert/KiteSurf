@@ -122,6 +122,30 @@ meer).
    "✓ Opgeslagen").
 6. Open 🛰️ Databronnen: controleer dat alle bronnen aan staan (standaard), zet er eventueel een uit.
 
+## 6. Android-app (optioneel)
+
+1. **Backend bijwerken** (eenmalig na deze wijziging): `npm run build`, `clasp push`,
+   `clasp deploy --deploymentId …` (zie stap 1). Controleer onderin de webapp dat er
+   **v97** staat.
+2. **Ondertekeningssleutel** bewaren: `kiteweer-release.keystore` + `keystore.properties` (niet in
+   de repo, de repo is publiek). Lokaal: zet `keystore.properties` in `android/` en pas `storeFile`
+   aan naar het pad van de keystore.
+3. **GitHub Actions-secrets** (Settings → Secrets and variables → Actions → New repository
+   secret), zodat Actions met dezelfde sleutel tekent:
+
+   | Secret | Waarde |
+   |---|---|
+   | `KITEWEER_KEYSTORE_BASE64` | uitvoer van `base64 -w0 kiteweer-release.keystore` |
+   | `KITEWEER_KEYSTORE_PASSWORD` | `storePassword` uit `keystore.properties` |
+   | `KITEWEER_KEY_ALIAS` | `kiteweer` |
+   | `KITEWEER_KEY_PASSWORD` | `keyPassword` uit `keystore.properties` |
+
+4. **Installeren:** download de APK (Actions → run → Artifacts, of een release), open hem op de
+   telefoon en sta installeren uit onbekende bronnen toe.
+5. **Testen:** app openen → welkomstkaart → windcriteria invullen → opslaan; toestemming voor
+   meldingen geven; een lege plek op het startscherm ingedrukt houden → Widgets → Kite Weer App.
+   De widget vult zich binnen een minuut.
+
 ## Bekende aandachtspunten
 
 - **Weerlive-parser is ongeverifieerd** — als je een `WEERLIVE_API_KEY` invult, controleer dan

@@ -1,0 +1,84 @@
+# Bouwt de Android-app (APK) bij elke push en bij handmatig starten ("Run workflow").
+# De APK staat daarna onder Actions -> deze run -> Artifacts. Bij een tag "v*" (bv. v1.0.1) komt
+# hij bovendien als download bij een GitHub-release.
+#
+# Ondertekening: zonder de secrets hieronder wordt met een willekeurige debug-sleutel getekend;
+# zo'n APK kan NIET over een eerder geïnstalleerde versie heen (eerst verwijderen = lokale
+# instellingen kwijt). Zet daarom eenmalig deze repository-secrets (Settings -> Secrets and
+# variables -> Actions), zie README "Android-app":
+#   KITEWEER_KEYSTORE_BASE64   base64 van kiteweer-release.keystore
+#   KITEWEER_KEYSTORE_PASSWORD wachtwoord (storePassword)
+#   KITEWEER_KEY_ALIAS         kiteweer
+#   KITEWEER_KEY_PASSWORD      wachtwoord (keyPassword)
+name: Android APK
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+
+      - name: Afhankelijkheden
+        run: npm ci
+
+      - name: Tests (logica)
+        run: npm test
+
+      - name: Web-assets bouwen en naar Android kopiëren
+        run: npm run build:app
+
+      - name: Ondertekeningssleutel klaarzetten
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KITEWEER_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/kiteweer-release.keystore"
+            echo "KITEWEER_KEYSTORE=$RUNNER_TEMP/kiteweer-release.keystore" >> "$GITHUB_ENV"
+          else
+            echo "::warning::Geen KITEWEER_KEYSTORE_BASE64-secret: APK wordt met een debug-sleutel ondertekend."
+          fi
+
+      - name: APK bouwen en Android-unittests
+        working-directory: android
+        env:
+          KITEWEER_KEYSTORE_PASSWORD: ${{ secrets.KITEWEER_KEYSTORE_PASSWORD }}
+          KITEWEER_KEY_ALIAS: ${{ secrets.KITEWEER_KEY_ALIAS }}
+          KITEWEER_KEY_PASSWORD: ${{ secrets.KITEWEER_KEY_PASSWORD }}
+        run: ./gradlew --no-daemon testReleaseUnitTest assembleRelease
+
+      - name: APK hernoemen
+        run: |
+          VERSIE=$(node -p "require('./package.json').version")
+          cp android/app/build/outputs/apk/release/app-release.apk "kite-weer-app-$VERSIE.apk"
+          echo "APK=kite-weer-app-$VERSIE.apk" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kite-weer-app-apk
+          path: ${{ env.APK }}
+
+      - name: Release (alleen bij een v*-tag)
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" "$APK" --title "Kite Weer App $GITHUB_REF_NAME" --generate-notes

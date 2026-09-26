@@ -1,0 +1,13 @@
+{
+  "appId": "nl.kiteweer.app",
+  "appName": "Kite Weer App",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false
+  },
+  "plugins": {
+    "SystemBars": {
+      "insetsHandling": "css"
+    }
+  }
+}

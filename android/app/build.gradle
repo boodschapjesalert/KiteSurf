@@ -1,0 +1,93 @@
+apply plugin: 'com.android.application'
+
+import groovy.json.JsonSlurper
+
+// Versie komt uit package.json (één bron): 1.2.3 -> versionName "1.2.3", versionCode 10203.
+def appVersie = new JsonSlurper().parse(file('../../package.json')).version
+def versieDelen = appVersie.tokenize('.').collect { it.toInteger() }
+def appVersieCode = versieDelen[0] * 10000 + versieDelen[1] * 100 + versieDelen[2]
+
+// Ondertekening: de repo is publiek, dus de sleutel staat er NIET in. Bron (in volgorde):
+// 1. android/keystore.properties (git-ignored; storeFile/storePassword/keyAlias/keyPassword), of
+// 2. omgevingsvariabelen KITEWEER_KEYSTORE / _PASSWORD / _ALIAS / _KEY_PASSWORD (GitHub Actions).
+// Zonder sleutel wordt de release-APK met de debug-sleutel van de bouwmachine ondertekend — prima
+// om te testen, maar updates installeren dan niet over een versie met een andere sleutel heen.
+def ondertekening = [:]
+def keystorePropsBestand = rootProject.file('keystore.properties')
+if (keystorePropsBestand.exists()) {
+    def props = new Properties()
+    keystorePropsBestand.withInputStream { props.load(it) }
+    ondertekening = [storeFile: rootProject.file(props.storeFile), storePassword: props.storePassword,
+                     keyAlias: props.keyAlias, keyPassword: props.keyPassword]
+} else if (System.getenv('KITEWEER_KEYSTORE')) {
+    ondertekening = [storeFile: file(System.getenv('KITEWEER_KEYSTORE')), storePassword: System.getenv('KITEWEER_KEYSTORE_PASSWORD'),
+                     keyAlias: System.getenv('KITEWEER_KEY_ALIAS'), keyPassword: System.getenv('KITEWEER_KEY_PASSWORD')]
+}
+
+android {
+    namespace = "nl.kiteweer.app"
+    compileSdk = rootProject.ext.compileSdkVersion
+    defaultConfig {
+        applicationId "nl.kiteweer.app"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode appVersieCode
+        versionName appVersie
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        aaptOptions {
+             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    signingConfigs {
+        if (ondertekening) {
+            kiteweer {
+                storeFile ondertekening.storeFile
+                storePassword ondertekening.storePassword
+                keyAlias ondertekening.keyAlias
+                keyPassword ondertekening.keyPassword
+            }
+        }
+    }
+    buildTypes {
+        release {
+            signingConfig ondertekening ? signingConfigs.kiteweer : signingConfigs.debug
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+}
+
+repositories {
+    flatDir{
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    // Achtergrondtaak voor widget + meldingen (KiteweerAchtergrond.java).
+    implementation "androidx.work:work-runtime:2.10.5"
+    implementation project(':capacitor-android')
+    testImplementation "junit:junit:$junitVersion"
+    // Echte org.json op de JVM (android.jar bevat alleen stubs).
+    testImplementation "org.json:json:20250517"
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    implementation project(':capacitor-cordova-android-plugins')
+}
+
+apply from: 'capacitor.build.gradle'
+
+try {
+    def servicesJSON = file('google-services.json')
+    if (servicesJSON.text) {
+        apply plugin: 'com.google.gms.google-services'
+    }
+} catch(Exception e) {
+    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+}

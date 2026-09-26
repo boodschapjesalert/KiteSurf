@@ -28,8 +28,12 @@ src/
   gas/       Dunne GAS entry points (doGet, triggers) — I/O: UrlFetchApp, DriveApp,
              PropertiesService, CacheService.
   webapp/    HTML/CSS/JS voor de front-end (HtmlService + google.script.run).
+  app/       Alleen voor de Android-app: vervangt google.script.run (zie "Android-app").
+android/     Capacitor Android-project: WebView-app + widget + meldingen (Java).
 test/        Unit- en integratietests voor src/logica/, met fixtures (echte bron-responses).
+tools/       gas-dev-server.js: draait dist/*.gs lokaal in Node (app end-to-end testen).
 build.js     Bundelt src/ naar dist/ (GAS-compatibel, klaar voor `clasp push`).
+build-app.js Bouwt www/ (de front-end voor de Android-app) uit src/webapp + src/app + src/logica.
 ```
 
 `src/gas/*.gs` roept functies uit `src/logica/*.js` rechtstreeks bij naam aan (bv.
@@ -1035,12 +1039,107 @@ Onderin de app staat een versienummer + datum (`KITEWEER_VERSIE` in `Code.gs`), 
 `clasp deploy` kunt controleren of je browser echt de nieuwe versie toont en niet een gecachete
 oudere. Hoog dit handmatig op bij een betekenisvolle wijziging.
 
+## Android-app
+
+Naast de webapp is er een Android-app (APK), gebouwd met [Capacitor](https://capacitorjs.com):
+dezelfde front-end (`src/webapp/`) draait in een WebView in de app, met een **eigen, lokale
+start**: het profiel (instellingen, favorieten, meldingen) staat alléén op de telefoon — geen
+gebruikers-ID, geen Drive-profiel, geen bewaar-link. De Apps Script-backend blijft wél het
+rekenwerk doen (weerbronnen ophalen/middelen, score, samenvattingszin), zodat API-sleutels
+(KNMI, Weerlive) server-side blijven en de logica op één plek staat.
+
+```
+Telefoon (APK)                                            Apps Script (/exec, doPost)
+┌───────────────────────────────────────────┐   POST     ┌──────────────────────────────────┐
+│ WebView: index.html + JavaScript.html     │ ─────────► │ {actie, profiel, ...}            │
+│  └ src/app/app.js: profiel in             │ ◄───────── │ verwerkAppVerzoek (appApi.js)    │
+│    Capacitor Preferences, API via fetch   │   JSON     │  → bepaalDagOordelenVoorLocatie_ │
+│ Widget + meldingen (Java, WorkManager)    │ ─────────► │  → bouwWidgetData_               │
+│  └ elk half uur {actie:'achtergrond'}     │            │  → bepaalAppMeldingen            │
+└───────────────────────────────────────────┘            └──────────────────────────────────┘
+```
+
+**App-API (`doPost`).** Een POST met een JSON-body met een `actie`-veld is een app-verzoek (een
+Telegram-update heeft dat veld nooit); de rest van `doPost` (Telegram-webhook) is ongewijzigd.
+Routering en validatie staan als pure, geteste logica in `src/logica/appApi.js`
+(`verwerkAppVerzoek`); `Code.gs` (`verwerkAppApiVerzoek_`) vult alleen de I/O in. Acties:
+
+| actie | invoer | antwoord |
+|---|---|---|
+| `weeroordeel` | `profiel`, `locatie` | `{ dagen }` — zelfde als `getWeerOordeel` |
+| `vergelijk` | `profiel` | `{ locaties }` — zelfde als `vergelijkFavorieteLocaties` |
+| `zoekLocatie` | `zoekterm` | `{ resultaten }` |
+| `deelLink` | — | `{ url }` — webapp-link met een nieuw ID |
+| `achtergrond` | `profiel`, `status`, optioneel `widgetLocatieId` | `{ widget, meldingen, status }` |
+
+Het meegestuurde profiel wordt altijd opnieuw gevalideerd (`valideerEnVulProfielAan`), net als een
+profiel uit Drive. De backend bewaart niets van de app; wie de /exec-URL kent kon de weerberekening
+al via de webapp gebruiken, dus dit opent geen nieuwe gegevens.
+
+**Front-end.** `build-app.js` bouwt `www/` uit dezelfde `index.html`/`JavaScript.html`/
+`Stylesheet.html` als de webapp (de `<?!= ... ?>`-tags worden ingevuld) plus `src/app/app.js`.
+`JavaScript.html` herkent de app aan `window.KiteweerApp` (`IS_APP`) en stuurt zijn
+`run('...')`-aanroepen dan daarheen i.p.v. naar `google.script.run`; verder zijn alleen de
+bewaar-link, de Telegram-koppeling en de Tasker-widget-uitleg anders in de app. Het laatst
+opgehaalde weeroordeel per locatie wordt lokaal bewaard: zonder verbinding toont de app dat, met
+de melding van welk tijdstip het is.
+
+**Widget.** Een echte Android-widget (`KiteweerWidget.java`), geen Tasker meer: oordeel van
+vandaag (achtergrondkleur = groen/oranje/rood), score, wind + vlagen, de eerstvolgende
+kitemogelijkheid, en bij voldoende hoogte een grafiek van vandaag (balken = wind, kleur = oordeel
+per uur, lijn = vlagen — zelfde opbouw als de Grafiek-tab). Volgt de eerste favoriete locatie.
+Leest het profiel rechtstreeks van de telefoon, dus er is geen koppelstap. De grafiek tekent de
+widget zelf uit `uren` in de widget-data (i.p.v. de Slides/Drive-afbeelding van de
+Tasker-widget, die per gebruikers-ID in Drive werd opgeslagen). Ondersteunt donkere modus.
+
+**Meldingen.** Dezelfde twee vormen als in Telegram (dagelijkse samenvatting, directe alert),
+nu als Android-melding. Welke meldingen er komen, bepaalt de backend
+(`bepaalAppMeldingen` in `appApi.js`, dezelfde regels als `Meldingen.gs`: alert per locatie én
+datum hooguit één keer, nachtrust 22:30-07:00, een gemelde datum blijft onthouden). De telefoon
+bewaart alleen de meldingsstatus en stuurt die bij de volgende aanroep terug. De achtergrondtaak
+(`KiteweerAchtergrond.java`, WorkManager) draait elk half uur, maar 's nachts (22:30-06:30) niet;
+voor de samenvatting plant hij een aparte taak precies op het gekozen tijdstip. Een samenvatting
+die door Doze/batterijbesparing pas >3 uur na het gekozen tijdstip aan de beurt zou komen, wordt
+voor die dag overgeslagen. Android 13+ vraagt eenmalig om toestemming voor meldingen.
+
+**Belasting.** Elke app-installatie doet overdag ~32 achtergrond-aanroepen per dag (plus wat je
+zelf in de app opent). De backend cachet de bronnen per locatie (Open-Meteo 60 min, de rest
+10-25 min), dus meerdere gebruikers met dezelfde spots delen die cache.
+
+### Bouwen, installeren, bijwerken
+
+```bash
+npm run build:app          # www/ bouwen + naar android/ kopiëren (cap sync)
+npm run apk                # idem + release-APK: android/app/build/outputs/apk/release/
+npm run dev:app            # lokale backend (tools/gas-dev-server.js) + www/ op http://localhost:8787
+```
+
+Nodig: Node 22, JDK 21 en de Android SDK (`ANDROID_HOME`, platform 36). Zonder lokale
+toolchain bouwt GitHub Actions de APK bij elke push (`.github/workflows/android-apk.yml`): Actions
+→ run → Artifacts; bij een tag `v*` komt hij als download bij een release.
+
+**Backend eerst.** De app heeft de nieuwe `doPost` nodig: `npm run build`, `clasp push` en
+`clasp deploy --deploymentId …` (zie SETUP.md stap 1). Met een oudere deployment meldt de app
+"De backend kent de app-API nog niet".
+
+**Ondertekening.** Deze repo is publiek, dus de ondertekeningssleutel staat er niet in.
+`android/app/build.gradle` leest hem uit `android/keystore.properties` (git-ignored) of uit de
+omgevingsvariabelen `KITEWEER_KEYSTORE*` (GitHub Actions-secrets, zie de workflow). Updates
+installeren alleen over een versie heen die met dezelfde sleutel ondertekend is — raak je de
+sleutel kwijt, dan moet de app eraf (en zijn de lokale instellingen weg). Versie ophogen: `version`
+in `package.json` (wordt `versionName`/`versionCode`).
+
+**Installeren (sideload).** Open de APK op de telefoon en sta "installeren uit onbekende bronnen"
+toe voor de app waarmee je hem opent (browser/bestanden). Niet via de Play Store; daarvoor zijn een
+ontwikkelaarsaccount en een AAB (`./gradlew bundleRelease`) nodig.
+
 ## Bouwen en testen
 
 ```bash
 npm test          # alle unit-/integratietests (Node's ingebouwde test runner, geen dependencies)
 npm run build     # bouwt dist/ vanuit src/
 npm run push      # build + clasp push
+npm run apk       # Android-app, zie "Android-app" hierboven
 ```
 
 Zie [`TESTING.md`](TESTING.md) voor testdekking en [`SETUP.md`](SETUP.md) voor eenmalige

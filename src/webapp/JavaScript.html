@@ -7,6 +7,11 @@
   // dezelfde link/browser later hetzelfde profiel teruggeeft. Wie de link kent, kan bij dat
   // profiel — net als een deel-link. Zie README.md "Aannames".
 
+  // Android-app (build-app.js + src/app/app.js): dezelfde front-end, maar het profiel staat op de
+  // telefoon en server-aanroepen lopen via window.KiteweerApp i.p.v. google.script.run. Er is dan
+  // geen bewaar-link, geen Telegram-koppeling en geen losse widget-APK (de widget zit in de app).
+  var IS_APP = !!window.KiteweerApp;
+
   var GEBRUIKER_ID_OPSLAG_SLEUTEL = 'kiteweer_gebruiker_id';
   var ONBOARDING_GEZIEN_SLEUTEL = 'kiteweer_onboarding_gezien';
   var gebruikerId = bepaalGebruikerId();
@@ -175,6 +180,7 @@
   // HtmlService-pagina die Code.gs serveert).
   function run(functienaam) {
     var args = Array.prototype.slice.call(arguments, 1);
+    if (IS_APP) return window.KiteweerApp.run(functienaam, args);
     return new Promise(function (resolve, reject) {
       var runner = google.script.run
         .withSuccessHandler(function (resultaat) {
@@ -202,8 +208,10 @@
   }
 
   function init() {
-    document.getElementById('linkBannerUrl').textContent = gebruikersLink();
-    toon('linkBanner');
+    if (!IS_APP) {
+      document.getElementById('linkBannerUrl').textContent = gebruikersLink();
+      toon('linkBanner');
+    }
 
     toonLaad(true);
     run('getProfiel', gebruikerId)
@@ -397,6 +405,8 @@
     run('getWeerOordeel', gebruikerId, locatie)
       .then(function (r) {
         renderDagKaarten(r.dagen);
+        // Alleen in de app: geen verbinding, dus de laatst opgehaalde voorspelling (src/app/app.js).
+        if (r.uitCache) toonFout('Geen verbinding — dit is de voorspelling van ' + r.uitCache + '.');
       })
       .catch(function (e) {
         document.getElementById('dagKaarten').innerHTML = '';
@@ -1600,10 +1610,13 @@
     // allebei bepaalt wat als "goed" geldt.
     var meldingGroep = document.createElement('div');
     meldingGroep.className = 'veldgroep';
-    meldingGroep.innerHTML = '<h3>Meldingen (Telegram)</h3>';
+    meldingGroep.innerHTML = IS_APP ? '<h3>Meldingen (op deze telefoon)</h3>' : '<h3>Meldingen (Telegram)</h3>';
     var telegramStatus = document.createElement('p');
     telegramStatus.className = 'uitleg';
-    if (profiel.telegramChatId) {
+    if (IS_APP) {
+      telegramStatus.textContent = 'ℹ️ Meldingen verschijnen als Android-melding. De app controleert ongeveer elk kwartier op de achtergrond; Android kan dat bij batterijbesparing iets uitstellen.';
+      meldingGroep.appendChild(telegramStatus);
+    } else if (profiel.telegramChatId) {
       telegramStatus.textContent = '✅ Telegram gekoppeld.';
       meldingGroep.appendChild(telegramStatus);
     } else {
@@ -1622,20 +1635,20 @@
     // links, teruglopend naar dezelfde kleuren als de meldingsvorm-badges elders in de app).
     var samenvattingBlok = document.createElement('div');
     samenvattingBlok.className = 'veldsubgroep';
-    samenvattingBlok.innerHTML = '<h4>📅 Telegram-bericht 1: Dagelijkse samenvatting</h4>' +
-      '<p class="uitleg">Eén bericht per dag, op het gekozen uur, met het oordeel per favoriete locatie over de hele Voorspellingshorizon (zie verderop).</p>';
-    samenvattingBlok.appendChild(bouwCheckboxVeldVoorObject(profiel.meldingen, 'dagelijkseSamenvatting', 'Dit bericht versturen', 'veld-meldingen-samenvatting'));
+    samenvattingBlok.innerHTML = (IS_APP ? '<h4>📅 Melding 1: Dagelijkse samenvatting</h4>' : '<h4>📅 Telegram-bericht 1: Dagelijkse samenvatting</h4>') +
+      '<p class="uitleg">Eén ' + (IS_APP ? 'melding per favoriete locatie' : 'bericht') + ' per dag, op het gekozen uur, met het oordeel ' + (IS_APP ? '' : 'per favoriete locatie ') + 'over de hele Voorspellingshorizon (zie verderop).</p>';
+    samenvattingBlok.appendChild(bouwCheckboxVeldVoorObject(profiel.meldingen, 'dagelijkseSamenvatting', IS_APP ? 'Deze melding tonen' : 'Dit bericht versturen', 'veld-meldingen-samenvatting'));
     samenvattingBlok.appendChild(bouwTijdstipVeld(profiel.meldingen, 'veld-meldingen-samenvattingtijd'));
     meldingGroep.appendChild(samenvattingBlok);
 
     var alertBlok = document.createElement('div');
     alertBlok.className = 'veldsubgroep';
-    alertBlok.innerHTML = '<h4>⚡ Telegram-bericht 2: Directe alert</h4>' +
-      '<p class="uitleg">Eén bericht zodra een favoriete locatie ergens binnen de Voorspellingshorizon ' +
+    alertBlok.innerHTML = (IS_APP ? '<h4>⚡ Melding 2: Directe alert</h4>' : '<h4>⚡ Telegram-bericht 2: Directe alert</h4>') +
+      '<p class="uitleg">Eén ' + (IS_APP ? 'melding' : 'bericht') + ' zodra een favoriete locatie ergens binnen de Voorspellingshorizon ' +
       '(zie verderop) een nieuwe "Goede" dag krijgt — dezelfde score-berekening als de kaarten en de ' +
       'dagelijkse samenvatting hierboven, dus geen aparte meldingsregel meer. Per locatie én per dag ' +
-      'hooguit één keer, ook als de dag daarna nog "Goed" blijft.</p>';
-    alertBlok.appendChild(bouwCheckboxVeldVoorObject(profiel.meldingen, 'directeAlert', 'Dit bericht versturen', 'veld-meldingen-directealert'));
+      'hooguit één keer, ook als de dag daarna nog "Goed" blijft.' + (IS_APP ? ' Niet tussen 22:30 en 07:00 (dan volgt de melding na 07:00).' : '') + '</p>';
+    alertBlok.appendChild(bouwCheckboxVeldVoorObject(profiel.meldingen, 'directeAlert', IS_APP ? 'Deze melding tonen' : 'Dit bericht versturen', 'veld-meldingen-directealert'));
     meldingGroep.appendChild(alertBlok);
 
     container.appendChild(meldingGroep);
@@ -1648,6 +1661,23 @@
     // koppelen na installatie meestal alleen nog "OK" tikken is.
     var widgetGroep = document.createElement('div');
     widgetGroep.className = 'veldgroep';
+    if (IS_APP) {
+      // In de app zit de widget ingebouwd en leest hij het profiel van de telefoon zelf — geen
+      // ID-koppeling of losse APK nodig.
+      var eersteFavoriet = (profiel.favorieteLocaties || [])[0];
+      widgetGroep.innerHTML =
+        '<h3>📱 Widget op je startscherm</h3>' +
+        '<p class="uitleg">Houd een lege plek op je startscherm ingedrukt → <strong>Widgets</strong> → ' +
+        '<strong>Kite Weer App</strong>. De widget toont het oordeel van vandaag, de wind, de ' +
+        'eerstvolgende kitemogelijkheid en een grafiek van vandaag. Tik op de widget om de app te openen.</p>';
+      var widgetLocatieUitleg = document.createElement('p');
+      widgetLocatieUitleg.className = 'uitleg';
+      widgetLocatieUitleg.textContent = eersteFavoriet
+        ? 'De widget volgt je eerste favoriete locatie: ' + eersteFavoriet.naam + '.'
+        : 'Voeg eerst een favoriete locatie toe; de widget volgt je eerste favoriet.';
+      widgetGroep.appendChild(widgetLocatieUitleg);
+      container.appendChild(widgetGroep);
+    } else {
     widgetGroep.innerHTML =
       '<h3>📱 Installeer ook de Widget</h3>' +
       '<p class="uitleg">De widget toont altijd je eerstvolgende kitemogelijkheid, rechtstreeks op je startscherm.</p>';
@@ -1685,6 +1715,7 @@
     widgetKopieerKnop.onclick = function () { kopieerNaarKlembord(gebruikerId, widgetKopieerKnop); };
     widgetGroep.appendChild(widgetKopieerKnop);
     container.appendChild(widgetGroep);
+    }
 
     var dagvensterGroep = document.createElement('div');
     dagvensterGroep.className = 'veldgroep';
