@@ -119,7 +119,9 @@ final class KiteweerGrafiek {
         for (int stap = 0; stap <= 2; stap++) {
             float y = plotOnder - plotHoogte * stap / 2f;
             canvas.drawLine(plotLinks, y, breedte, y, hulplijn);
-            if (stap > 0) canvas.drawText(String.valueOf(schaalMax * stap / 2), asBreedte - 4 * s, y - tekstMidden, tekst);
+            // Lage grafiek: alleen het bovenste label, anders overlappen ze.
+            boolean label = stap == 2 || (stap == 1 && plotHoogte >= 2.4f * tekst.getTextSize());
+            if (label) canvas.drawText(String.valueOf(schaalMax * stap / 2), asBreedte - 4 * s, y - tekstMidden, tekst);
         }
         canvas.drawText("kn", asBreedte - 4 * s, hoogte - 2 * s, tekst);
         tekst.setTextAlign(Paint.Align.CENTER);

@@ -79,4 +79,17 @@ public class KiteweerWidgetTekstTest {
         JSONArray stevig = new JSONArray("[{\"uren\":[{\"windKnopen\":12}]},{\"uren\":[{\"windKnopen\":22,\"windvlaagKnopen\":31}]}]");
         assertEquals(35, KiteweerWidgetTekst.schaalMax(stevig));
     }
+
+    @Test
+    public void paginas() throws Exception {
+        long nu = 1_000_000_000L;
+        assertEquals(2, KiteweerWidgetTekst.huidigePagina(2, nu - 60_000, nu, 4));
+        assertEquals(0, KiteweerWidgetTekst.huidigePagina(2, nu - KiteweerWidgetTekst.PAGINA_GELDIG_MS - 1, nu, 4));
+        assertEquals(0, KiteweerWidgetTekst.huidigePagina(5, nu, nu, 4));
+        assertEquals(0, KiteweerWidgetTekst.huidigePagina(-1, nu, nu, 4));
+
+        JSONArray dagen = new JSONArray("[{\"dagLabel\":\"Vandaag\"},{\"dagLabel\":\"Morgen\"}]");
+        assertEquals("Overzicht · 1/3", KiteweerWidgetTekst.paginaLabel(dagen, 0));
+        assertEquals("Morgen · 3/3", KiteweerWidgetTekst.paginaLabel(dagen, 2));
+    }
 }

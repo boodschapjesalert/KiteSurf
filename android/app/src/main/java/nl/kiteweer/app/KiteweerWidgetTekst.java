@@ -107,7 +107,7 @@ final class KiteweerWidgetTekst {
 
     /**
      * Gezamenlijke kn-schaal voor alle dagkaarten (hoogste wind of vlaag, afgerond op 5, minstens
-     * 15), zodat je dagen onderling kunt vergelijken tijdens het scrollen.
+     * 15), zodat je dagen onderling kunt vergelijken tijdens het bladeren.
      */
     static int schaalMax(JSONArray dagen) {
         double max = 15;
@@ -123,6 +123,25 @@ final class KiteweerWidgetTekst {
             }
         }
         return (int) (Math.ceil(max / 5.0) * 5);
+    }
+
+    /** Na zo lang niet bladeren toont de widget weer het overzicht (pagina 1). */
+    static final long PAGINA_GELDIG_MS = 10 * 60 * 1000;
+
+    /** Te tonen pagina (0 = overzicht): de laatst gekozen, tenzij verlopen of buiten bereik. */
+    static int huidigePagina(int opgeslagen, long gekozenOp, long nu, int aantal) {
+        if (nu - gekozenOp > PAGINA_GELDIG_MS || opgeslagen < 0 || opgeslagen >= aantal) return 0;
+        return opgeslagen;
+    }
+
+    /** "Overzicht · 1/6", "Morgen · 3/6". */
+    static String paginaLabel(JSONArray dagen, int pagina) {
+        String naam = "Overzicht";
+        if (pagina > 0) {
+            JSONObject dag = dagen.optJSONObject(pagina - 1);
+            naam = dag != null ? dag.optString("dagLabel", "Dag " + pagina) : "Dag " + pagina;
+        }
+        return naam + " · " + (pagina + 1) + "/" + (dagen.length() + 1);
     }
 
     /** "13:00" -> 13; -1 als het geen uur is. */

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Eerste lijstitem van de widget: het overzicht (oordeel vandaag, wind, volgende kans en een
-     strook met het oordeel per dag). Zie KiteweerWidgetService.bouwOverzicht. -->
+<!-- Eerste pagina van de widget: het overzicht (oordeel vandaag, wind, volgende kans en een
+     strook met het oordeel per dag; tik op een dag = naar die pagina). Zie KiteweerWidget.vulOverzicht. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/overzicht_root"
     android:layout_width="match_parent"
@@ -17,8 +17,8 @@
 
         <LinearLayout
             android:id="@+id/overzicht_badge"
-            android:layout_width="54dp"
-            android:layout_height="54dp"
+            android:layout_width="50dp"
+            android:layout_height="50dp"
             android:background="@drawable/widget_badge_grijs"
             android:gravity="center"
             android:orientation="vertical">
@@ -83,7 +83,7 @@
         android:id="@+id/overzicht_kans"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
+        android:layout_marginTop="4dp"
         android:ellipsize="end"
         android:maxLines="2"
         android:textColor="@color/widget_tekst"
@@ -94,7 +94,7 @@
         android:id="@+id/overzicht_dagen"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
+        android:layout_marginTop="5dp"
         android:orientation="horizontal">
 
         <TextView android:id="@+id/overzicht_chip1" style="@style/KiteweerChip" />
@@ -104,15 +104,4 @@
         <TextView android:id="@+id/overzicht_chip5" style="@style/KiteweerChip" />
     </LinearLayout>
 
-    <TextView
-        android:id="@+id/overzicht_hint"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="3dp"
-        android:ellipsize="end"
-        android:gravity="center_horizontal"
-        android:maxLines="1"
-        android:text="@string/widget_scroll_hint"
-        android:textColor="@color/widget_tekst_zacht"
-        android:textSize="10sp" />
 </LinearLayout>

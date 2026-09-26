@@ -37,4 +37,16 @@
         <item name="android:textStyle">bold</item>
         <item name="android:visibility">gone</item>
     </style>
+
+    <!-- Bladerknop onderaan de widget (kiteweer_widget.xml): ruim tikvlak, groot pijltje. -->
+    <style name="KiteweerPijl">
+        <item name="android:layout_width">44dp</item>
+        <item name="android:layout_height">26dp</item>
+        <item name="android:background">@drawable/widget_kaart</item>
+        <item name="android:gravity">center</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:textColor">@color/widget_tekst</item>
+        <item name="android:textSize">22sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
 </resources>

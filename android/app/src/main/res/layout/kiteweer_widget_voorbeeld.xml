@@ -78,9 +78,9 @@
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
+        android:layout_marginTop="8dp"
         android:gravity="center_horizontal"
-        android:text="@string/widget_scroll_hint"
+        android:text="‹   Overzicht · 1/4   ›"
         android:textColor="@color/widget_tekst_zacht"
-        android:textSize="10sp" />
+        android:textSize="12sp" />
 </LinearLayout>

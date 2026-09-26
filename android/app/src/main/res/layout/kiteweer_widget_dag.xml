@@ -1,12 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Lijstitem per dag: kop (dag, oordeel, beste venster) + grafiek van dat etmaal.
-     De buitenste FrameLayout zorgt voor de ruimte tussen de kaarten (marges van een lijstitem
-     negeert ListView). Zie KiteweerWidgetService.bouwDag. -->
+<!-- Pagina per dag: kop (dag, oordeel, beste venster) + grafiek van dat etmaal.
+     Zie KiteweerWidget.vulDag. -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/dag_root"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:paddingTop="6dp">
+    android:paddingTop="2dp">
 
     <LinearLayout
         android:layout_width="match_parent"
