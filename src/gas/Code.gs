@@ -11,7 +11,7 @@
 // Handmatig ophogen bij elke betekenisvolle wijziging/deploy — zichtbaar onderin de app, zodat
 // eenvoudig te controleren is of een nieuwe versie daadwerkelijk live staat (i.p.v. een gecachete
 // oudere versie in de browser).
-var KITEWEER_VERSIE = 'v98 (26 sep 2026)';
+var KITEWEER_VERSIE = 'v99 (5 okt 2026)';
 
 /**
  * Verkort een URL via TinyURL's geauthenticeerde API (eigen account + API-token in Script
@@ -403,11 +403,19 @@ function saveProfiel(gebruikerId, ruwProfiel) {
     // beschermt wel tegen letterlijk gelijktijdig schrijven (bv. samen met de kwartier-trigger),
     // maar niet tegen een client die met een verouderde momentopname werkte. Zie
     // wijzigProfielMetLock_ (ProfielOpslag.gs) voor de volledige toelichting.
+    //
+    // De Telegram-koppeling en de meldingsstatus beheert alleen de server: die komen uit het
+    // opgeslagen profiel, niet uit wat de browser meestuurt (behoudServerBeheerdeVelden in
+    // src/logica/telegramKoppeling.js). Een tabblad dat al open stond van vóór het ontkoppelen zette
+    // anders bij "Opslaan" de oude koppeling terug — en dus weer meldingen.
+    function opslaan() {
+      return slaProfielOp_(id, behoudServerBeheerdeVelden(ruwProfiel, laadProfiel_(id)));
+    }
     var lock = LockService.getScriptLock();
     var resultaat;
     if (lock.tryLock(10000)) {
       try {
-        resultaat = slaProfielOp_(id, ruwProfiel);
+        resultaat = opslaan();
       } finally {
         lock.releaseLock();
       }
@@ -415,7 +423,7 @@ function saveProfiel(gebruikerId, ruwProfiel) {
       // Kon de lock niet krijgen (een andere schrijver is al bezig) — toch opslaan i.p.v. de
       // gebruikers-actie te laten mislukken; beter een zeldzame race dan een opslaan dat zomaar
       // faalt zonder duidelijke reden voor de gebruiker.
-      resultaat = slaProfielOp_(id, ruwProfiel);
+      resultaat = opslaan();
     }
     return { profiel: resultaat.profiel, fouten: resultaat.fouten };
   });

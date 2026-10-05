@@ -6,6 +6,9 @@
 //   "deep link" t.me/<bot>?start=<gebruikerId>, zie JavaScript.html: telegramKoppelLink()), krijgt
 //   dit chat-ID gekoppeld aan dát BESTAANDE profiel i.p.v. een nieuw, los profiel.
 // - Elke ochtend om 08:00 stuurt Meldingen.gs de 3-daagse kitesurf-vooruitzicht naar dit chat-ID.
+// - /stop ontkoppelt de chat van élk profiel (geen meldingen meer). Eén chat hoort bij precies één
+//   profiel; zie src/logica/telegramKoppeling.js voor hoe dat bij koppelen, opslaan en versturen
+//   bewaakt wordt.
 //
 // Vereist eenmalig (zie SETUP.md): TELEGRAM_BOT_TOKEN in Script Properties, en daarna
 // `registreerTelegramWebhook()` één keer handmatig draaien vanuit de Apps Script-editor.
@@ -33,6 +36,40 @@ function vindGebruikerIdVoorTelegramChatId_(chatId) {
     }
   }
   return null;
+}
+
+/** Alle chat-ID -> gebruikers-ID index-items in één keer (zie kiesActieveTelegramProfielen). */
+function leesTelegramChatIndex_() {
+  var alle = PropertiesService.getScriptProperties().getProperties();
+  var index = {};
+  Object.keys(alle).forEach(function (sleutel) {
+    if (sleutel.indexOf('tg_chat_') === 0) index[sleutel.slice('tg_chat_'.length)] = alle[sleutel];
+  });
+  return index;
+}
+
+/**
+ * Ontkoppelt álle profielen die aan dit chat-ID hangen, behalve `behoudGebruikerId` (null = allemaal).
+ * Een chat hoort bij precies één profiel; eerder werd bij opnieuw koppelen alleen het profiel uit de
+ * index ontkoppeld, waardoor een tweede profiel met dezelfde chat stil bleef doorsturen
+ * (gebruikersrapport: "afgemeld maar blijf samenvattingen krijgen"). Leest alle profielen (traag-ish),
+ * maar koppelen/stoppen is zeldzaam en doPost is idempotent per update_id, dus een Telegram-
+ * herhaling door een trager antwoord doet geen kwaad.
+ * @returns {number} aantal ontkoppelde profielen
+ */
+function ontkoppelProfielenVanChat_(chatId, behoudGebruikerId) {
+  var aantal = 0;
+  laadAlleProfielen_().forEach(function (p) {
+    if (!p.gebruikerId || p.gebruikerId === behoudGebruikerId) return;
+    if (p.telegramChatId == null || String(p.telegramChatId) !== String(chatId)) return;
+    wijzigProfielMetLock_(p.gebruikerId, function (vers) {
+      // Onder de lock opnieuw controleren: alleen ontkoppelen als het nog steeds déze chat is.
+      if (vers.telegramChatId != null && String(vers.telegramChatId) === String(chatId)) vers.telegramChatId = null;
+      return vers;
+    });
+    aantal++;
+  });
+  return aantal;
 }
 
 /** Houdt de chat-ID -> gebruikers-ID index gelijk met het profiel dat zojuist (ont)koppeld is. */
@@ -68,16 +105,28 @@ function haalStartPayloadUit_(tekst) {
 
 /**
  * Verwerkt een inkomend Telegram-bericht (elk bericht, niet alleen /start).
- * Drie gevallen:
+ * Gevallen:
+ * 0. /stop: ontkoppel álle profielen van deze chat — geen samenvattingen of alerts meer.
  * 1. /start met een deep-link-payload die niet al aan dit chat-ID hangt: koppel dit chat-ID aan
- *    dát bestaande profiel (en ontkoppel een eventueel ander profiel dat nog aan dit chat-ID
- *    hing — een chat-ID hoort maar bij één profiel tegelijk).
+ *    dát bestaande profiel (en ontkoppel álle andere profielen die nog aan dit chat-ID hingen — een
+ *    chat-ID hoort maar bij één profiel tegelijk).
  * 2. Dit chat-ID is al aan een profiel gekoppeld (eender welk bericht): dat profiel hergebruiken.
- * 3. Nieuw chat-ID zonder deep-link-payload: een nieuw, los profiel aanmaken.
+ * 3. Nieuw chat-ID met /start zonder deep-link-payload: een nieuw, los profiel aanmaken.
+ * 4. Nieuw chat-ID met een ander bericht: alleen uitleg, géén nieuw profiel — anders zette een los
+ *    berichtje na /stop de meldingen stilletjes weer aan (met een vers profiel).
  */
 function verwerkTelegramBericht_(message) {
   var chatId = message && message.chat && message.chat.id;
   if (!chatId) return;
+
+  if (isTelegramStopCommando(message.text)) {
+    ontkoppelProfielenVanChat_(chatId, null);
+    onthoudTelegramKoppeling_(chatId, null);
+    verstuurTelegramBotBericht_(chatId,
+      '🔕 Gestopt: je krijgt hier geen samenvattingen of alerts meer. Je instellingen en favorieten in de app blijven bewaard.\n\n' +
+      'Later weer aanmelden? Open de app → ⚙️ Instellingen → "🔗 Koppel aan Telegram".');
+    return;
+  }
 
   var deepLinkGebruikerId = haalStartPayloadUit_(message.text);
   var bestaandeGebruikerId = vindGebruikerIdVoorTelegramChatId_(chatId);
@@ -89,22 +138,25 @@ function verwerkTelegramBericht_(message) {
   // koppelen kan in theorie samenvallen met een webapp-opslag of een trigger-run op hetzelfde
   // profiel — de lock+her-lees-stap voorkomt dat één van beide de ander stilzwijgend overschrijft.
   if (deepLinkGebruikerId && deepLinkGebruikerId !== bestaandeGebruikerId) {
-    if (bestaandeGebruikerId) {
-      wijzigProfielMetLock_(bestaandeGebruikerId, function (oudProfiel) {
-        oudProfiel.telegramChatId = null;
-        return oudProfiel;
-      });
-    }
     gebruikerId = deepLinkGebruikerId;
     wijzigProfielMetLock_(gebruikerId, function (teKoppelenProfiel) {
       teKoppelenProfiel.telegramChatId = chatId;
       return teKoppelenProfiel;
     });
     onthoudTelegramKoppeling_(chatId, gebruikerId);
+    // Álle andere profielen van deze chat, niet alleen bestaandeGebruikerId uit de index.
+    ontkoppelProfielenVanChat_(chatId, gebruikerId);
     status = 'gekoppeldAanBestaand';
   } else if (bestaandeGebruikerId) {
     gebruikerId = bestaandeGebruikerId;
     status = 'algGekoppeld';
+  } else if (!/^\/start(?:@\w+)?$/.test((message.text || '').trim())) {
+    // Hier is er geen deep-link-payload (anders gold geval 1), dus alleen een kale /start maakt een profiel.
+    if (recentAlGeantwoord_(chatId)) return;
+    verstuurTelegramBotBericht_(chatId,
+      'ℹ️ Deze chat is niet (meer) aan een profiel gekoppeld, dus je krijgt hier geen meldingen.\n\n' +
+      'Aanmelden: open de app → ⚙️ Instellingen → "🔗 Koppel aan Telegram", of stuur /start voor een nieuw profiel.');
+    return;
   } else {
     gebruikerId = Utilities.getUuid();
     wijzigProfielMetLock_(gebruikerId, function (nieuwProfiel) {
@@ -131,7 +183,7 @@ function verwerkTelegramBericht_(message) {
       '🪁 Gekoppeld! Je bestaande profiel is nu aan Telegram gekoppeld.\n\n' +
       'Elke ochtend om 08:00 stuur ik hier een 3-daagse kitesurf-vooruitzicht voor je favoriete ' +
       'locaties (goed/niet goed volgens je meldingsregel).\n\n' +
-      'Open de app hier: ' + appLink;
+      'Open de app hier: ' + appLink + '\n\nStoppen met deze berichten kan altijd met /stop.';
   } else if (status === 'algGekoppeld') {
     tekst = '🪁 Je hebt al een profiel gekoppeld. Open de app hier:\n' + appLink;
   } else {
@@ -142,7 +194,8 @@ function verwerkTelegramBericht_(message) {
       'locaties (goed/niet goed volgens je meldingsregel: minimaal de ingestelde windkracht + richting).\n\n' +
       'Bewaar de link hierboven — er is geen account/login. Had je al een browser-profiel? Gebruik ' +
       'dan liever de "🔗 Koppel aan Telegram"-knop bij ⚙️ Instellingen in dát profiel, i.p.v. dit ' +
-      'nieuwe profiel — dan blijven je bestaande favorieten en instellingen behouden.';
+      'nieuwe profiel — dan blijven je bestaande favorieten en instellingen behouden.\n\n' +
+      'Stoppen met deze berichten kan altijd met /stop.';
   }
   verstuurTelegramBotBericht_(chatId, tekst);
 }

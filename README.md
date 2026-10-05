@@ -495,6 +495,26 @@ Vaker draaien geeft geen dubbele berichten, `laatsteSamenvattingDatum` bewaakt d
 naar wie de bot gekoppeld heeft (zie hieronder) — zonder gekoppeld Telegram-chat-ID krijgt een
 profiel geen van beide.
 
+### Eén Telegram-chat, één profiel (en /stop)
+
+Gebruikersrapport: "ik heb me afgemeld voor de dagelijkse samenvatting maar blijf ze krijgen". Oorzaak:
+er hingen **twee profielen aan dezelfde Telegram-chat** — de samenvatting stond in het ene uit, in het
+andere nog aan. Dat kon op drie manieren ontstaan, alle drie nu dicht (`src/logica/telegramKoppeling.js`):
+
+- **Versturen:** per chat stuurt alleen het profiel uit de chat-index (`tg_chat_<chatId>`); andere
+  profielen met dezelfde chat worden bij de eerstvolgende trigger-run ontkoppeld
+  (`kiesEnHerstelTelegramZenders_` in Meldingen.gs). Zelfherstellend voor bestaande dubbele koppelingen.
+- **Opslaan:** `saveProfiel` neemt `telegramChatId`, `meldingen.laatstGemeld` en
+  `meldingen.laatsteSamenvattingDatum` uit het opgeslagen profiel, niet uit de browser
+  (`behoudServerBeheerdeVelden`) — een oud tabblad zette anders een verbroken koppeling terug.
+- **Koppelen:** de deep link ontkoppelt álle andere profielen van die chat, niet alleen het profiel
+  uit de index.
+
+Verder: herkansingen van de samenvatting slaan een intussen afgemeld profiel over; `/stop` in de bot
+ontkoppelt de chat van elk profiel (het slotbericht van de samenvatting noemt dat); en een los
+bericht van een niet-gekoppelde chat maakt geen nieuw profiel meer aan (alleen een kale `/start`
+doet dat), zodat een berichtje na `/stop` de meldingen niet stilletjes weer aanzet.
+
 ### Cache-opwarming (voorkomt trage koude starts)
 
 `controleerEnStuurMeldingen` roept, vóór de per-profiel meldingen-afhandeling en **ongeacht**
