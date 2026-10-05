@@ -92,6 +92,15 @@ function controleerEnStuurMeldingen() {
   // hadden. `haalWeerDataOp_`'s CacheService-cache is gedeeld over alle profielen (de cachesleutel
   // bevat geen gebruikers-ID, alleen lat/lon + dagen), dus twee profielen met dezelfde locatie
   // warmen elkaars cache gratis mee — geen dubbele externe aanroepen.
+  // Eén chat = één zender: dubbel gekoppelde profielen hier ontkoppelen (zie
+  // kiesEnHerstelTelegramZenders_), vóórdat er iets verstuurd wordt — ook de herkansingen hieronder.
+  try {
+    var ontkoppeld = kiesEnHerstelTelegramZenders_(profielen);
+    if (ontkoppeld) runInfo.dubbelOntkoppeld = ontkoppeld;
+  } catch (koppelFout) {
+    Logger.log('controleerEnStuurMeldingen: dubbele koppelingen controleren mislukt: ' + koppelFout);
+  }
+
   bewaarHorizonKaart_(profielen);
   if (minutenNu >= WARM_START_MINUUT && minutenNu < WARM_EIND_MINUUT) {
     warmWeerCache_(profielen);
@@ -169,6 +178,31 @@ function controleerEnStuurMeldingen() {
   runInfo.openMeteo = weerTelling_;
   runInfo.duurS = Math.round((new Date().getTime() - runStart) / 1000);
   legRunVast_(runInfo);
+}
+
+/**
+ * Per Telegram-chat mag precies één profiel meldingen sturen (kiesActieveTelegramProfielen in
+ * src/logica/telegramKoppeling.js): het profiel uit de chat-index, de rest wordt ontkoppeld. Zonder
+ * dit kreeg iemand met twee profielen aan dezelfde chat de samenvatting van het ándere profiel, ook
+ * nadat hij hem in "zijn" profiel had uitgezet (gebruikersrapport). Zet `telegramChatId` van de
+ * ontkoppelde profielen ook in `profielen` (in het geheugen) op null, zodat deze run ze overslaat.
+ * @returns {number} aantal ontkoppelde profielen
+ */
+function kiesEnHerstelTelegramZenders_(profielen) {
+  var keuze = kiesActieveTelegramProfielen(profielen, leesTelegramChatIndex_());
+  Object.keys(keuze.indexUpdates).forEach(function (chatId) {
+    onthoudTelegramKoppeling_(chatId, keuze.indexUpdates[chatId]);
+  });
+  keuze.dubbel.forEach(function (item) {
+    wijzigProfielMetLock_(item.gebruikerId, function (vers) {
+      if (vers.telegramChatId != null && String(vers.telegramChatId) === String(item.chatId)) vers.telegramChatId = null;
+      return vers;
+    });
+    profielen.forEach(function (p) {
+      if (p.gebruikerId === item.gebruikerId) p.telegramChatId = null;
+    });
+  });
+  return keuze.dubbel.length;
 }
 
 /**
@@ -472,7 +506,7 @@ function verstuurDagelijkseSamenvatting_(profiel, opties) {
   });
 
   if (!alleenLocatieIds) {
-    verstuurTelegramBotBericht_(profiel.telegramChatId, 'Bekijk de app: ' + webappUrl);
+    verstuurTelegramBotBericht_(profiel.telegramChatId, 'Bekijk de app: ' + webappUrl + '\nGeen berichten meer? Stuur /stop');
   }
   return { mislukteLocatieIds: mislukteLocatieIds };
 }
@@ -542,6 +576,8 @@ function verwerkOpenstaandeHerkansingen_(profielen, vandaag) {
     if (!item || item.datum !== vandaag) return;
     var profiel = profielen.filter(function (p) { return p.gebruikerId === gebruikerId; })[0];
     if (!profiel || !profiel.telegramChatId) return;
+    // Intussen afgemeld (of ontkoppeld): geen nagekomen berichten meer voor vandaag.
+    if (!profiel.meldingen || !profiel.meldingen.dagelijkseSamenvatting) return;
 
     var pogingNr = (item.pogingen || 0) + 1;
     var laatste = pogingNr >= SAMENVATTING_MAX_HERKANSINGEN;

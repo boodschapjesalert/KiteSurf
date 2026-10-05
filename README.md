@@ -495,6 +495,26 @@ Vaker draaien geeft geen dubbele berichten, `laatsteSamenvattingDatum` bewaakt d
 naar wie de bot gekoppeld heeft (zie hieronder) — zonder gekoppeld Telegram-chat-ID krijgt een
 profiel geen van beide.
 
+### Eén Telegram-chat, één profiel (en /stop)
+
+Gebruikersrapport: "ik heb me afgemeld voor de dagelijkse samenvatting maar blijf ze krijgen". Oorzaak:
+er hingen **twee profielen aan dezelfde Telegram-chat** — de samenvatting stond in het ene uit, in het
+andere nog aan. Dat kon op drie manieren ontstaan, alle drie nu dicht (`src/logica/telegramKoppeling.js`):
+
+- **Versturen:** per chat stuurt alleen het profiel uit de chat-index (`tg_chat_<chatId>`); andere
+  profielen met dezelfde chat worden bij de eerstvolgende trigger-run ontkoppeld
+  (`kiesEnHerstelTelegramZenders_` in Meldingen.gs). Zelfherstellend voor bestaande dubbele koppelingen.
+- **Opslaan:** `saveProfiel` neemt `telegramChatId`, `meldingen.laatstGemeld` en
+  `meldingen.laatsteSamenvattingDatum` uit het opgeslagen profiel, niet uit de browser
+  (`behoudServerBeheerdeVelden`) — een oud tabblad zette anders een verbroken koppeling terug.
+- **Koppelen:** de deep link ontkoppelt álle andere profielen van die chat, niet alleen het profiel
+  uit de index.
+
+Verder: herkansingen van de samenvatting slaan een intussen afgemeld profiel over; `/stop` in de bot
+ontkoppelt de chat van elk profiel (het slotbericht van de samenvatting noemt dat); en een los
+bericht van een niet-gekoppelde chat maakt geen nieuw profiel meer aan (alleen een kale `/start`
+doet dat), zodat een berichtje na `/stop` de meldingen niet stilletjes weer aanzet.
+
 ### Cache-opwarming (voorkomt trage koude starts)
 
 `controleerEnStuurMeldingen` roept, vóór de per-profiel meldingen-afhandeling en **ongeacht**
@@ -1066,11 +1086,12 @@ Routering en validatie staan als pure, geteste logica in `src/logica/appApi.js`
 
 | actie | invoer | antwoord |
 |---|---|---|
-| `weeroordeel` | `profiel`, `locatie` | `{ dagen }` — zelfde als `getWeerOordeel` |
+| `weeroordeel` | `profiel`, `locatie` | `{ dagen, sleutel }` — zelfde als `getWeerOordeel` |
 | `vergelijk` | `profiel` | `{ locaties }` — zelfde als `vergelijkFavorieteLocaties` |
 | `zoekLocatie` | `zoekterm` | `{ resultaten }` |
 | `deelLink` | — | `{ url }` — webapp-link met een nieuw ID |
-| `achtergrond` | `profiel`, `status`, optioneel `widgetLocatieId` | `{ widget, meldingen, status }` |
+| `weeroordelen` | `profiel`, optioneel `locaties` (standaard alle favorieten, max. 10) | `{ resultaten: [{ locatieId, sleutel, dagen } of { locatieId, fout }] }` |
+| `achtergrond` | `profiel`, `status`, optioneel `widgetLocatieId`, `metOordelen` | `{ widget, meldingen, status, oordelen? }` |
 
 Het meegestuurde profiel wordt altijd opnieuw gevalideerd (`valideerEnVulProfielAan`), net als een
 profiel uit Drive. De backend bewaart niets van de app; wie de /exec-URL kent kon de weerberekening
@@ -1084,13 +1105,25 @@ bewaar-link, de Telegram-koppeling en de Tasker-widget-uitleg anders in de app. 
 opgehaalde weeroordeel per locatie wordt lokaal bewaard: zonder verbinding toont de app dat, met
 de melding van welk tijdstip het is.
 
-**Widget.** Een echte Android-widget (`KiteweerWidget.java`), geen Tasker meer: oordeel van
-vandaag (achtergrondkleur = groen/oranje/rood), score, wind + vlagen, de eerstvolgende
-kitemogelijkheid, en bij voldoende hoogte een grafiek van vandaag (balken = wind, kleur = oordeel
-per uur, lijn = vlagen — zelfde opbouw als de Grafiek-tab). Volgt de eerste favoriete locatie.
-Leest het profiel rechtstreeks van de telefoon, dus er is geen koppelstap. De grafiek tekent de
-widget zelf uit `uren` in de widget-data (i.p.v. de Slides/Drive-afbeelding van de
-Tasker-widget, die per gebruikers-ID in Drive werd opgeslagen). Ondersteunt donkere modus.
+**Widget.** Een echte Android-widget (`KiteweerWidget.java`), geen Tasker meer, **in pagina's**: vaste
+kop (spot, tijd van bijwerken — tik erop om meteen te verversen) en onderaan pijltjes ‹ › met
+"Morgen · 3/6" om te bladeren (› op de laatste pagina gaat terug naar het overzicht).
+
+1. **Overzicht** (pagina 1): score-badge en oordeel van vandaag (achtergrondkleur =
+   groen/oranje/rood), wind + vlagen, de eerstvolgende kitemogelijkheid en een strook chips met
+   het oordeel per dag ("za 7.4") — tik op een chip om direct naar die dag te gaan.
+2. **Per dag van de Voorspellingshorizon een pagina** met score, beste venster ("13:00–18:00"),
+   oordeel/wind en een grafiek 09:00-20:00 (`KiteweerGrafiek.java`): balken = wind (kleur =
+   oordeel per uur), lijn = vlagen, pijltjes = windrichting, druppels = regen (≥ 0,2 mm), het
+   beste venster als band, bij vandaag een stippellijn op "nu". Alle dagen delen één kn-schaal,
+   zodat je dagen kunt vergelijken.
+
+De gekozen pagina wordt per widget onthouden; na 10 minuten niet bladeren toont de widget weer het
+overzicht. Standaardmaat 4x3; lager dan 200dp wordt de dagpagina compacter (zonder detailregel).
+Volgt de eerste favoriete locatie en leest het profiel rechtstreeks van de telefoon, dus er is geen
+koppelstap. De gegevens komen uit `widget.dagen` (per dag gebouwd door `bouwWidgetDag` in
+`src/logica/widgetData.js`); een backend van vóór v98 stuurt die nog niet, dan is er alleen een
+pagina voor vandaag (uit `uren`). Ondersteunt donkere modus.
 
 **Meldingen.** Dezelfde twee vormen als in Telegram (dagelijkse samenvatting, directe alert),
 nu als Android-melding. Welke meldingen er komen, bepaalt de backend
@@ -1132,6 +1165,35 @@ in `package.json` (wordt `versionName`/`versionCode`).
 **Installeren (sideload).** Open de APK op de telefoon en sta "installeren uit onbekende bronnen"
 toe voor de app waarmee je hem opent (browser/bestanden). Niet via de Play Store; daarvoor zijn een
 ontwikkelaarsaccount en een AAB (`./gradlew bundleRelease`) nodig.
+
+**Snel laden (geen wachttijd bij wisselen).** De app toont altijd eerst de laatst bewaarde
+voorspelling en ververst stil op de achtergrond ("⟳ bijwerken…" naast de locatienaam):
+- Weeroordelen staan per locatie in Capacitor Preferences (`kiteweer_oordeel_<id>`, zelfde
+  SharedPreferences "CapacitorStorage" als het profiel) als `{ opgehaald, sleutel, r: { dagen } }`.
+  `sleutel` (`oordeelSleutel` in `src/logica/appCache.js`) is een vingerafdruk van instellingen +
+  locatie: na het wijzigen van instellingen telt een oud oordeel niet meer. Dagen vóór vandaag
+  vallen weg (`bruikbaarBewaardOordeel`).
+- Jonger dan 15 minuten: niet opnieuw ophalen; ouder: tonen en verversen.
+- Na de eerste locatie haalt de app alle andere favorieten in één aanroep op (actie
+  `weeroordelen`), dus wisselen is daarna direct.
+- De achtergrondtaak vraagt elk half uur met `metOordelen: true` ook de weeroordelen van alle
+  favorieten op en zet ze in dezelfde opslag (`KiteweerAchtergrond.bewaarOordelen`): bij openen is
+  de app meestal al actueel. De backend rekent die oordelen toch al voor de meldingen; gecomprimeerd
+  is het ~6 KB per locatie.
+- Zonder verbinding blijft de bewaarde voorspelling staan met "Geen verbinding — dit is de
+  voorspelling van HH:MM".
+
+**Updates.** De app kijkt bij het openen in `downloads/versie.json` op `main` (via
+raw.githubusercontent.com) of er een nieuwere versie is (`isNieuwereAppVersie` in
+`src/logica/appVersie.js`) en toont dan bovenaan een balk met een downloadlink; de update installeert
+over de oude versie heen (instellingen blijven) zolang hij met dezelfde sleutel is ondertekend. Een
+nieuwe versie uitbrengen: `version` in `package.json` ophogen, ondertekende APK bouwen, als
+`downloads/kite-weer-app-<versie>.apk` committen en `downloads/versie.json` (versie, url, notitie)
+bijwerken — pas na de merge naar `main` zien gebruikers de melding.
+
+**Sleutelwissel 1.0.0 → 1.1.0.** De oorspronkelijke release-sleutel van 1.0.0 is niet bewaard gebleven;
+1.1.0 en later zijn met een nieuwe sleutel ondertekend. Wie 1.0.0 heeft, moet die eenmalig verwijderen en 1.1.0
+installeren (instellingen en favorieten opnieuw invullen); daarna updaten nieuwe versies gewoon. 1.0.0 heeft nog geen updatemelding.
 
 ## Bouwen en testen
 

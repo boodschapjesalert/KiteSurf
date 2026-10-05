@@ -5,6 +5,10 @@
     <string name="package_name">nl.kiteweer.app</string>
     <string name="custom_url_scheme">nl.kiteweer.app</string>
     <string name="widget_naam">Kite Weer App</string>
-    <string name="widget_beschrijving">Oordeel van vandaag, wind en je eerstvolgende kitekans</string>
-    <string name="widget_grafiek_beschrijving">Wind en vlagen per uur vandaag</string>
+    <string name="widget_beschrijving">Oordeel van vandaag, je eerstvolgende kitekans en per pagina de windgrafiek van elke dag</string>
+    <string name="widget_grafiek_beschrijving">Wind en vlagen per uur</string>
+    <string name="widget_leeg">Open de app om de widget te vullen</string>
+    <string name="widget_vandaag">Vandaag</string>
+    <string name="widget_vorige">Vorige pagina</string>
+    <string name="widget_volgende">Volgende pagina</string>
 </resources>

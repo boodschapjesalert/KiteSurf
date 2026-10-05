@@ -6,14 +6,12 @@ import android.appwidget.AppWidgetProvider;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
-import android.content.res.Configuration;
-import android.graphics.Bitmap;
-import android.graphics.Canvas;
-import android.graphics.Paint;
-import android.graphics.Path;
-import android.graphics.RectF;
+import android.content.SharedPreferences;
+import android.graphics.Typeface;
 import android.os.Bundle;
-import android.util.TypedValue;
+import android.text.SpannableStringBuilder;
+import android.text.Spanned;
+import android.text.style.StyleSpan;
 import android.view.View;
 import android.widget.RemoteViews;
 
@@ -21,14 +19,30 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.util.Calendar;
+import java.util.Locale;
+
 /**
- * Startscherm-widget: oordeel van vandaag, wind, de eerstvolgende kitemogelijkheid en (als de
- * widget hoog genoeg is) een grafiek van vandaag — voor de eerste favoriete locatie. De gegevens
- * komen van KiteweerAchtergrond (die ze bij de backend ophaalt); deze klasse tekent alleen.
+ * Startscherm-widget voor de eerste favoriete locatie, in pagina's: pagina 1 is het overzicht
+ * (oordeel vandaag, wind, volgende kans, oordeel per dag), daarna één pagina per dag van de
+ * Voorspellingshorizon met de windgrafiek. Onderaan bladeren de pijltjes; een tik op een dag in het
+ * overzicht springt meteen naar die pagina. De gegevens komen van KiteweerAchtergrond (die ze bij de
+ * backend ophaalt); deze klasse tekent alleen.
  */
 public class KiteweerWidget extends AppWidgetProvider {
-    // Vanaf deze hoogte (dp) past de grafiek eronder.
-    private static final int MIN_HOOGTE_VOOR_GRAFIEK_DP = 150;
+    /** Tik op de bijwerktijd in de kop: meteen nieuwe gegevens ophalen. */
+    static final String ACTIE_VERVERS = "nl.kiteweer.app.WIDGET_VERVERS";
+    /** Tik op een pijltje of dag-chip: naar pagina EXTRA_PAGINA. */
+    static final String ACTIE_PAGINA = "nl.kiteweer.app.WIDGET_PAGINA";
+    static final String EXTRA_PAGINA = "pagina";
+
+    private static final String PREFS_PAGINA = "KiteweerWidgetPagina";
+    // Onder deze hoogte (dp) verdwijnt de detailregel op de dagpagina's.
+    private static final int COMPACT_HOOGTE_DP = 200;
+
+    private static final int[] CHIPS = {
+            R.id.overzicht_chip1, R.id.overzicht_chip2, R.id.overzicht_chip3, R.id.overzicht_chip4, R.id.overzicht_chip5,
+    };
 
     @Override
     public void onUpdate(Context context, AppWidgetManager beheer, int[] ids) {
@@ -38,6 +52,7 @@ public class KiteweerWidget extends AppWidgetProvider {
 
     @Override
     public void onAppWidgetOptionsChanged(Context context, AppWidgetManager beheer, int id, Bundle nieuweOpties) {
+        // Andere maat: de grafiek opnieuw tekenen op de nieuwe breedte/hoogte.
         teken(context, beheer, id);
     }
 
@@ -47,6 +62,32 @@ public class KiteweerWidget extends AppWidgetProvider {
         KiteweerAchtergrond.verversNu(context);
     }
 
+    @Override
+    public void onDeleted(Context context, int[] ids) {
+        SharedPreferences.Editor e = context.getSharedPreferences(PREFS_PAGINA, Context.MODE_PRIVATE).edit();
+        for (int id : ids) e.remove("pagina_" + id).remove("tijd_" + id);
+        e.apply();
+    }
+
+    @Override
+    public void onReceive(Context context, Intent intent) {
+        if (ACTIE_VERVERS.equals(intent.getAction())) {
+            KiteweerAchtergrond.verversNu(context);
+            return;
+        }
+        if (ACTIE_PAGINA.equals(intent.getAction())) {
+            int id = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID);
+            if (id == AppWidgetManager.INVALID_APPWIDGET_ID) return;
+            context.getSharedPreferences(PREFS_PAGINA, Context.MODE_PRIVATE).edit()
+                    .putInt("pagina_" + id, intent.getIntExtra(EXTRA_PAGINA, 0))
+                    .putLong("tijd_" + id, System.currentTimeMillis())
+                    .apply();
+            teken(context, AppWidgetManager.getInstance(context), id);
+            return;
+        }
+        super.onReceive(context, intent);
+    }
+
     /** Alle geplaatste widgets opnieuw tekenen (na nieuwe gegevens). */
     static void werkAllesBij(Context context) {
         AppWidgetManager beheer = AppWidgetManager.getInstance(context);
@@ -54,61 +95,158 @@ public class KiteweerWidget extends AppWidgetProvider {
         for (int id : ids) teken(context, beheer, id);
     }
 
+    /** De laatst opgehaalde widget-gegevens, of null (app nog nooit geopend / onleesbaar). */
+    static JSONObject leesData(Context context) {
+        String tekst = context.getSharedPreferences(KiteweerAchtergrond.PREFS_EIGEN, Context.MODE_PRIVATE)
+                .getString(KiteweerAchtergrond.SLEUTEL_WIDGET, null);
+        try {
+            return tekst != null ? new JSONObject(tekst) : null;
+        } catch (JSONException e) {
+            return null;
+        }
+    }
+
+    /**
+     * { breedteDp, hoogteDp } van de widget. Staand (de gewone telefoonstand) is de widget
+     * MIN_WIDTH breed en MAX_HEIGHT hoog.
+     */
+    static int[] maten(AppWidgetManager beheer, int id) {
+        Bundle opties = beheer.getAppWidgetOptions(id);
+        int breedteDp = opties.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0);
+        int hoogteDp = opties.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 0);
+        if (hoogteDp <= 0) hoogteDp = opties.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 0);
+        return new int[] { breedteDp > 0 ? breedteDp : 250, hoogteDp > 0 ? hoogteDp : 180 };
+    }
+
     private static void teken(Context context, AppWidgetManager beheer, int id) {
+        beheer.updateAppWidget(id, bouw(context, beheer, id));
+    }
+
+    /** De complete widget voor de huidige pagina (los van teken() zodat hij te testen/renderen is). */
+    static RemoteViews bouw(Context context, AppWidgetManager beheer, int id) {
         RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.kiteweer_widget);
 
         Intent openApp = new Intent(context, MainActivity.class).setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        views.setOnClickPendingIntent(R.id.widget_root,
-                PendingIntent.getActivity(context, 0, openApp, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT));
+        PendingIntent openAppKlik = PendingIntent.getActivity(context, 0, openApp, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+        views.setOnClickPendingIntent(R.id.widget_root, openAppKlik);
+        views.setOnClickPendingIntent(R.id.widget_overzicht, openAppKlik);
+        views.setOnClickPendingIntent(R.id.widget_dag, openAppKlik);
 
-        String tekst = context.getSharedPreferences(KiteweerAchtergrond.PREFS_EIGEN, Context.MODE_PRIVATE)
-                .getString(KiteweerAchtergrond.SLEUTEL_WIDGET, null);
-        JSONObject data = null;
-        try {
-            data = tekst != null ? new JSONObject(tekst) : null;
-        } catch (JSONException e) {
-            data = null;
-        }
+        Intent ververs = new Intent(context, KiteweerWidget.class).setAction(ACTIE_VERVERS);
+        views.setOnClickPendingIntent(R.id.widget_bijgewerkt,
+                PendingIntent.getBroadcast(context, 0, ververs, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT));
 
+        JSONObject data = leesData(context);
         if (data == null) {
             views.setInt(R.id.widget_root, "setBackgroundResource", R.drawable.widget_bg_grijs);
-            views.setTextViewText(R.id.widget_spot, "Kite Weer App");
+            views.setTextViewText(R.id.widget_spot, context.getString(R.string.app_name));
             views.setTextViewText(R.id.widget_bijgewerkt, "");
-            views.setTextViewText(R.id.widget_score, "–");
-            views.setTextViewText(R.id.widget_verdict, "Open de app om de widget te vullen");
-            views.setTextViewText(R.id.widget_wind, "");
-            views.setTextViewText(R.id.widget_kans, "");
-            views.setViewVisibility(R.id.widget_grafiek, View.GONE);
-            beheer.updateAppWidget(id, views);
-            return;
+            views.setViewVisibility(R.id.widget_overzicht, View.GONE);
+            views.setViewVisibility(R.id.widget_dag, View.GONE);
+            views.setViewVisibility(R.id.widget_navigatie, View.GONE);
+            views.setViewVisibility(R.id.widget_leeg, View.VISIBLE);
+            return views;
         }
 
-        String kleur = data.optString("kleur", "");
-        views.setInt(R.id.widget_root, "setBackgroundResource", achtergrondVoor(kleur));
-        views.setTextViewText(R.id.widget_spot, data.optString("spotnaam", "Kite Weer App"));
+        views.setInt(R.id.widget_root, "setBackgroundResource", achtergrondVoor(data.optString("kleur", "")));
+        views.setTextViewText(R.id.widget_spot, data.optString("spotnaam", context.getString(R.string.app_name)));
         views.setTextViewText(R.id.widget_bijgewerkt, "⟳ " + data.optString("bijgewerkt", ""));
-        views.setTextViewText(R.id.widget_score, data.isNull("score") ? "–" : formatScore(data.optDouble("score")) + "/10");
-        views.setTextViewText(R.id.widget_verdict, "Vandaag · " + data.optString("verdict", ""));
-        views.setTextViewText(R.id.widget_wind, windTekst(data));
-        views.setTextViewText(R.id.widget_kans, kansTekst(data.optJSONObject("volgendeKans")));
+        views.setViewVisibility(R.id.widget_leeg, View.GONE);
 
-        Bundle opties = beheer.getAppWidgetOptions(id);
-        // Staand (de gewone telefoonstand) is de widget MIN_WIDTH breed en MAX_HEIGHT hoog.
-        int hoogteDp = opties.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 0);
-        if (hoogteDp <= 0) hoogteDp = opties.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 0);
-        int breedteDp = opties.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0);
-        if (breedteDp <= 0) breedteDp = 250;
-        JSONArray uren = data.optJSONArray("uren");
-        if (hoogteDp >= MIN_HOOGTE_VOOR_GRAFIEK_DP && uren != null && uren.length() > 1) {
-            float dichtheid = context.getResources().getDisplayMetrics().density;
-            int breedtePx = Math.max(200, Math.round((breedteDp - 24) * dichtheid));
-            int hoogtePx = Math.round(Math.min(110, Math.max(60, hoogteDp - 120)) * dichtheid);
-            views.setImageViewBitmap(R.id.widget_grafiek, tekenGrafiek(context, uren, breedtePx, hoogtePx, dichtheid));
-            views.setViewVisibility(R.id.widget_grafiek, View.VISIBLE);
+        JSONArray dagen = KiteweerWidgetTekst.dagen(data);
+        int aantal = 1 + dagen.length();
+        SharedPreferences paginas = context.getSharedPreferences(PREFS_PAGINA, Context.MODE_PRIVATE);
+        int pagina = KiteweerWidgetTekst.huidigePagina(paginas.getInt("pagina_" + id, 0),
+                paginas.getLong("tijd_" + id, 0), System.currentTimeMillis(), aantal);
+        int[] maten = maten(beheer, id);
+
+        if (pagina == 0) {
+            views.setViewVisibility(R.id.widget_overzicht, View.VISIBLE);
+            views.setViewVisibility(R.id.widget_dag, View.GONE);
+            vulOverzicht(context, views, id, data, dagen, maten[0]);
         } else {
-            views.setViewVisibility(R.id.widget_grafiek, View.GONE);
+            views.setViewVisibility(R.id.widget_overzicht, View.GONE);
+            views.setViewVisibility(R.id.widget_dag, View.VISIBLE);
+            vulDag(context, views, dagen, pagina - 1, maten);
         }
-        beheer.updateAppWidget(id, views);
+
+        // Navigatie: ‹ verborgen op de eerste pagina; › op de laatste gaat terug naar het overzicht.
+        views.setViewVisibility(R.id.widget_navigatie, aantal > 1 ? View.VISIBLE : View.GONE);
+        views.setTextViewText(R.id.widget_pagina, KiteweerWidgetTekst.paginaLabel(dagen, pagina));
+        views.setViewVisibility(R.id.widget_vorige, pagina > 0 ? View.VISIBLE : View.INVISIBLE);
+        views.setOnClickPendingIntent(R.id.widget_vorige, naarPagina(context, id, 0, pagina - 1));
+        views.setOnClickPendingIntent(R.id.widget_volgende, naarPagina(context, id, 1, (pagina + 1) % aantal));
+        return views;
+    }
+
+    /** Broadcast naar pagina `doel`; `slot` houdt de PendingIntents per widget en knop uit elkaar. */
+    private static PendingIntent naarPagina(Context context, int id, int slot, int doel) {
+        Intent intent = new Intent(context, KiteweerWidget.class)
+                .setAction(ACTIE_PAGINA)
+                .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
+                .putExtra(EXTRA_PAGINA, doel);
+        return PendingIntent.getBroadcast(context, id * 16 + slot, intent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+    }
+
+    private static void vulOverzicht(Context context, RemoteViews v, int id, JSONObject data, JSONArray dagen, int breedteDp) {
+        v.setInt(R.id.overzicht_badge, "setBackgroundResource", badgeVoor(data.optString("kleur")));
+        v.setTextViewText(R.id.overzicht_score, KiteweerWidgetTekst.score(data));
+        v.setTextViewText(R.id.overzicht_verdict, data.optString("verdict", ""));
+        String wind = KiteweerWidgetTekst.windTekst(data);
+        v.setTextViewText(R.id.overzicht_wind, wind);
+        v.setViewVisibility(R.id.overzicht_wind, wind.isEmpty() ? View.GONE : View.VISIBLE);
+        v.setTextViewText(R.id.overzicht_kans, KiteweerWidgetTekst.kansTekst(data.optJSONObject("volgendeKans")));
+
+        // Oordeel per dag als chips (zoveel als er in de breedte passen, 3-5); tik = naar die dag.
+        int aantal = Math.min(dagen.length(), Math.max(3, Math.min(CHIPS.length, (breedteDp - 24) / 60)));
+        for (int i = 0; i < CHIPS.length; i++) {
+            JSONObject dag = i < aantal ? dagen.optJSONObject(i) : null;
+            if (dag == null) {
+                v.setViewVisibility(CHIPS[i], View.GONE);
+                continue;
+            }
+            v.setViewVisibility(CHIPS[i], View.VISIBLE);
+            v.setTextViewText(CHIPS[i], KiteweerWidgetTekst.chipTekst(dag));
+            v.setInt(CHIPS[i], "setBackgroundResource", badgeVoor(dag.optString("kleur")));
+            v.setOnClickPendingIntent(CHIPS[i], naarPagina(context, id, 2 + i, 1 + i));
+        }
+        v.setViewVisibility(R.id.overzicht_dagen, aantal > 1 ? View.VISIBLE : View.GONE);
+    }
+
+    private static void vulDag(Context context, RemoteViews v, JSONArray dagen, int index, int[] maten) {
+        JSONObject dag = dagen.optJSONObject(index);
+        if (dag == null) dag = new JSONObject();
+
+        v.setTextViewText(R.id.dag_score, KiteweerWidgetTekst.score(dag));
+        v.setInt(R.id.dag_score, "setBackgroundResource", badgeVoor(dag.optString("kleur")));
+
+        SpannableStringBuilder titel = new SpannableStringBuilder(dag.optString("dagLabel", ""));
+        titel.setSpan(new StyleSpan(Typeface.BOLD), 0, titel.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        String datum = KiteweerWidgetTekst.datumNaastLabel(dag);
+        if (!datum.isEmpty()) titel.append("  ").append(datum);
+        v.setTextViewText(R.id.dag_titel, titel);
+
+        String venster = KiteweerWidgetTekst.vensterTekst(dag);
+        v.setTextViewText(R.id.dag_venster, venster);
+        v.setViewVisibility(R.id.dag_venster, venster.isEmpty() ? View.GONE : View.VISIBLE);
+        v.setTextViewText(R.id.dag_detail, KiteweerWidgetTekst.dagDetail(dag));
+        // Lage widget: de detailregel wijkt voor de grafiek.
+        boolean compact = maten[1] < COMPACT_HOOGTE_DP;
+        v.setViewVisibility(R.id.dag_detail, compact ? View.GONE : View.VISIBLE);
+
+        // De grafiek vult de ruimte tussen de dagkop en de bladerknoppen.
+        int inhoudHoogteDp = maten[1] - 16 - 22 - 32;
+        int grafiekHoogteDp = Math.max(50, Math.min(180, inhoudHoogteDp - (compact ? 36 : 52)));
+        int grafiekBreedteDp = Math.max(150, maten[0] - 40);
+        v.setImageViewBitmap(R.id.dag_grafiek, KiteweerGrafiek.tekenDag(context, dag, isVandaag(dag),
+                KiteweerWidgetTekst.schaalMax(dagen), grafiekBreedteDp, grafiekHoogteDp));
+    }
+
+    /** Alleen vandaag krijgt de "nu"-lijn (niet de dag van gisteren uit verouderde gegevens). */
+    private static boolean isVandaag(JSONObject dag) {
+        Calendar nu = Calendar.getInstance();
+        String vandaag = String.format(Locale.ROOT, "%04d-%02d-%02d", nu.get(Calendar.YEAR), nu.get(Calendar.MONTH) + 1, nu.get(Calendar.DAY_OF_MONTH));
+        return vandaag.equals(dag.optString("datum", null)) || (dag.isNull("datum") && "Vandaag".equals(dag.optString("dagLabel")));
     }
 
     static int achtergrondVoor(String kleur) {
@@ -118,100 +256,10 @@ public class KiteweerWidget extends AppWidgetProvider {
         return R.drawable.widget_bg_grijs;
     }
 
-    private static String formatScore(double score) {
-        return score == Math.rint(score) ? String.valueOf((long) score) : String.valueOf(Math.round(score * 10) / 10.0);
-    }
-
-    private static String windTekst(JSONObject data) {
-        if (data.isNull("windKnopen")) return "";
-        StringBuilder sb = new StringBuilder("💨 ").append(data.optInt("windKnopen")).append(" kn");
-        if (!data.isNull("windrichtingKompas")) sb.append(' ').append(data.optString("windrichtingKompas"));
-        if (!data.isNull("windvlaagKnopen")) sb.append(" · vlagen ").append(data.optInt("windvlaagKnopen")).append(" kn");
-        return sb.toString();
-    }
-
-    private static String kansTekst(JSONObject kans) {
-        if (kans == null || !kans.optBoolean("gevonden", false)) return "Volgende kans: geen binnen je horizon";
-        return "Volgende kans: " + kans.optString("dagLabel") + " " + kans.optString("vanaf") + "–" + kans.optString("tot")
-                + " (" + formatScore(kans.optDouble("score")) + "/10)";
-    }
-
-    /**
-     * Zelfde opbouw als de Grafiek-tab van de app (bouwUurGrafiek in JavaScript.html): balken =
-     * windsnelheid (kleur = oordeel van dat uur), lijn = windvlagen, op één kn-schaal afgerond op 5.
-     */
-    static Bitmap tekenGrafiek(Context context, JSONArray uren, int breedte, int hoogte, float dichtheid) {
-        boolean donker = (context.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
-        int tekstKleur = donker ? 0xDDFFFFFF : 0xDD000000;
-        int lijnKleur = donker ? 0xFFFFFFFF : 0xFF263238;
-
-        Bitmap bitmap = Bitmap.createBitmap(breedte, hoogte, Bitmap.Config.ARGB_8888);
-        Canvas canvas = new Canvas(bitmap);
-        Paint tekst = new Paint(Paint.ANTI_ALIAS_FLAG);
-        tekst.setColor(tekstKleur);
-        tekst.setTextSize(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 10, context.getResources().getDisplayMetrics()));
-
-        float labelHoogte = tekst.getTextSize() + 3 * dichtheid;
-        float asBreedte = tekst.measureText("30") + 4 * dichtheid;
-        float plotLinks = asBreedte;
-        float plotBoven = tekst.getTextSize() / 2;
-        float plotBreedte = breedte - plotLinks;
-        float plotHoogte = hoogte - labelHoogte - plotBoven;
-
-        double max = 5;
-        for (int i = 0; i < uren.length(); i++) {
-            JSONObject u = uren.optJSONObject(i);
-            if (u == null) continue;
-            if (!u.isNull("windKnopen")) max = Math.max(max, u.optDouble("windKnopen"));
-            if (!u.isNull("windvlaagKnopen")) max = Math.max(max, u.optDouble("windvlaagKnopen"));
-        }
-        max = Math.ceil(max / 5.0) * 5;
-
-        // As-label bovenaan en hulplijn halverwege.
-        canvas.drawText(String.valueOf((int) max), 0, plotBoven + tekst.getTextSize() / 2, tekst);
-        Paint hulplijn = new Paint();
-        hulplijn.setColor(donker ? 0x33FFFFFF : 0x22000000);
-        hulplijn.setStrokeWidth(dichtheid);
-        canvas.drawLine(plotLinks, plotBoven, breedte, plotBoven, hulplijn);
-        canvas.drawLine(plotLinks, plotBoven + plotHoogte / 2, breedte, plotBoven + plotHoogte / 2, hulplijn);
-
-        int n = uren.length();
-        float kolom = plotBreedte / n;
-        float marge = Math.max(1, kolom * 0.15f);
-        Paint balk = new Paint(Paint.ANTI_ALIAS_FLAG);
-        Path vlaagLijn = new Path();
-        boolean lijnGestart = false;
-        float straal = 2 * dichtheid;
-
-        for (int i = 0; i < n; i++) {
-            JSONObject u = uren.optJSONObject(i);
-            if (u == null) continue;
-            float x = plotLinks + i * kolom;
-            if (!u.isNull("windKnopen")) {
-                float h = (float) (u.optDouble("windKnopen") / max) * plotHoogte;
-                balk.setColor(KiteweerMeldingen.kleurVan(u.optString("kleur")));
-                canvas.drawRoundRect(new RectF(x + marge, plotBoven + plotHoogte - h, x + kolom - marge, plotBoven + plotHoogte), straal, straal, balk);
-            }
-            if (!u.isNull("windvlaagKnopen")) {
-                float y = plotBoven + plotHoogte - (float) (u.optDouble("windvlaagKnopen") / max) * plotHoogte;
-                float midden = x + kolom / 2;
-                if (lijnGestart) vlaagLijn.lineTo(midden, y);
-                else {
-                    vlaagLijn.moveTo(midden, y);
-                    lijnGestart = true;
-                }
-            }
-            int uur = u.optInt("uur", -1);
-            if (uur >= 0 && uur % 3 == 0) {
-                String label = String.valueOf(uur);
-                canvas.drawText(label, x + kolom / 2 - tekst.measureText(label) / 2, hoogte - 2 * dichtheid, tekst);
-            }
-        }
-        Paint lijn = new Paint(Paint.ANTI_ALIAS_FLAG);
-        lijn.setStyle(Paint.Style.STROKE);
-        lijn.setStrokeWidth(2 * dichtheid);
-        lijn.setColor(lijnKleur);
-        canvas.drawPath(vlaagLijn, lijn);
-        return bitmap;
+    static int badgeVoor(String kleur) {
+        if ("groen".equals(kleur)) return R.drawable.widget_badge_groen;
+        if ("oranje".equals(kleur)) return R.drawable.widget_badge_oranje;
+        if ("rood".equals(kleur)) return R.drawable.widget_badge_rood;
+        return R.drawable.widget_badge_grijs;
     }
 }

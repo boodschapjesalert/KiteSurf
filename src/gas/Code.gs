@@ -11,7 +11,7 @@
 // Handmatig ophogen bij elke betekenisvolle wijziging/deploy — zichtbaar onderin de app, zodat
 // eenvoudig te controleren is of een nieuwe versie daadwerkelijk live staat (i.p.v. een gecachete
 // oudere versie in de browser).
-var KITEWEER_VERSIE = 'v97 (26 sep 2026)';
+var KITEWEER_VERSIE = 'v99 (5 okt 2026)';
 
 /**
  * Verkort een URL via TinyURL's geauthenticeerde API (eigen account + API-token in Script
@@ -189,12 +189,6 @@ function widgetProfielEnLocatie_(e) {
  * `application/json`), en voor een programmatische client als Tasker zou het toch niets uitmaken.
  * @returns {GoogleAppsScript.Content.TextOutput}
  */
-/** "15:00", desgewenst een uur verschoven (%24 zodat 23u+1 netjes naar "00:00" wrapt). */
-function formatWidgetUurLabel_(tijdstip, plusUur) {
-  var uur = (new Date(tijdstip).getHours() + (plusUur || 0)) % 24;
-  return (uur < 10 ? '0' : '') + uur + ':00';
-}
-
 function widgetJson_(e) {
   var json = (function () {
     var gevonden = widgetProfielEnLocatie_(e);
@@ -222,11 +216,7 @@ function bouwWidgetData_(profiel, locatie, grafiekVoorGebruikerId) {
       minimaleSessieUren: profiel.minimaleSessieUren,
       gewichten: profiel.scoreGewichten,
     };
-    var verdictPerKleur = {
-      groen: 'Goede kite-conditie',
-      oranje: 'Matige kite-conditie',
-      rood: 'Niet geschikt om te kiten',
-    };
+    var verdictPerKleur = WIDGET_VERDICT_PER_KLEUR;
     function ruwVanDagScore(dagScore) {
       return dagScore.besteUur ? dagScore.besteUur.ruw : null;
     }
@@ -282,10 +272,10 @@ function bouwWidgetData_(profiel, locatie, grafiekVoorGebruikerId) {
         gevonden: true,
         dagLabel: MELDING_DAG_LABELS[i] || formatDatumKort(dagen[i].datum),
         datum: dagen[i].datum,
-        vanaf: formatWidgetUurLabel_(kansScore.besteVenster.startTijdstip, 0),
+        vanaf: widgetUurLabel(kansScore.besteVenster.startTijdstip, 0),
         // +1 uur: het laatste uur van het venster loopt tot het eind van dat uur (zelfde conventie
         // als dagSamenvatting.bouwDagSamenvatting).
-        tot: formatWidgetUurLabel_(kansScore.besteVenster.eindTijdstip, 1),
+        tot: widgetUurLabel(kansScore.besteVenster.eindTijdstip, 1),
         kleur: kansScore.kleur,
         score: kansScore.score,
         verdict: verdictPerKleur[kansScore.kleur] || kansScore.kleur,
@@ -311,28 +301,15 @@ function bouwWidgetData_(profiel, locatie, grafiekVoorGebruikerId) {
       // Uurwaarden van vandaag binnen het vaste grafiekvenster (09:00-20:00, zelfde als de
       // webapp's Grafiek-tab en bouwDagGrafiekBlob_) — de Android-widget tekent hier zelf de
       // wind-/vlaaggrafiek mee, zonder Slides/Drive.
-      uren: widgetUren_(dagScoreVandaag.uurResultaten),
+      uren: widgetUren(dagScoreVandaag.uurResultaten, GRAFIEK_START_UUR_, GRAFIEK_EIND_UUR_),
+      // Per dag van de Voorspellingshorizon (vandaag eerst): oordeel, beste venster, wind en de
+      // uurreeks — de Android-widget toont hier onder het overzicht een grafiek per dag van.
+      dagen: dagen.map(function (dag, index) {
+        var dagScore = index === 0 ? dagScoreVandaag : berekenDagScore(dag.uren, instellingen, dagvensterOpties);
+        return bouwWidgetDag(dag, dagScore, index, { startUur: GRAFIEK_START_UUR_, eindUur: GRAFIEK_EIND_UUR_ });
+      }),
     };
   })();
-}
-
-/** Compacte uurreeks voor de widget-grafiek: { uur, windKnopen, windvlaagKnopen, kleur, neerslagMm }. */
-function widgetUren_(uurResultaten) {
-  return (uurResultaten || [])
-    .filter(function (u) {
-      var uur = new Date(u.tijdstip).getHours();
-      return uur >= GRAFIEK_START_UUR_ && uur <= GRAFIEK_EIND_UUR_;
-    })
-    .map(function (u) {
-      var ruw = u.ruw || {};
-      return {
-        uur: new Date(u.tijdstip).getHours(),
-        windKnopen: ruw.windKnopen != null ? Math.round(ruw.windKnopen) : null,
-        windvlaagKnopen: ruw.windvlaagKnopen != null ? Math.round(ruw.windvlaagKnopen) : null,
-        kleur: u.kleur,
-        neerslagMm: ruw.neerslagMm != null ? Math.round(ruw.neerslagMm * 10) / 10 : null,
-      };
-    });
 }
 
 /**
@@ -426,11 +403,19 @@ function saveProfiel(gebruikerId, ruwProfiel) {
     // beschermt wel tegen letterlijk gelijktijdig schrijven (bv. samen met de kwartier-trigger),
     // maar niet tegen een client die met een verouderde momentopname werkte. Zie
     // wijzigProfielMetLock_ (ProfielOpslag.gs) voor de volledige toelichting.
+    //
+    // De Telegram-koppeling en de meldingsstatus beheert alleen de server: die komen uit het
+    // opgeslagen profiel, niet uit wat de browser meestuurt (behoudServerBeheerdeVelden in
+    // src/logica/telegramKoppeling.js). Een tabblad dat al open stond van vóór het ontkoppelen zette
+    // anders bij "Opslaan" de oude koppeling terug — en dus weer meldingen.
+    function opslaan() {
+      return slaProfielOp_(id, behoudServerBeheerdeVelden(ruwProfiel, laadProfiel_(id)));
+    }
     var lock = LockService.getScriptLock();
     var resultaat;
     if (lock.tryLock(10000)) {
       try {
-        resultaat = slaProfielOp_(id, ruwProfiel);
+        resultaat = opslaan();
       } finally {
         lock.releaseLock();
       }
@@ -438,7 +423,7 @@ function saveProfiel(gebruikerId, ruwProfiel) {
       // Kon de lock niet krijgen (een andere schrijver is al bezig) — toch opslaan i.p.v. de
       // gebruikers-actie te laten mislukken; beter een zeldzame race dan een opslaan dat zomaar
       // faalt zonder duidelijke reden voor de gebruiker.
-      resultaat = slaProfielOp_(id, ruwProfiel);
+      resultaat = opslaan();
     }
     return { profiel: resultaat.profiel, fouten: resultaat.fouten };
   });

@@ -17,6 +17,20 @@ clasp push
 clasp deploy --deploymentId AKfycbxaxYVjqJxb4IK5ep3KrVmtrMJHCVFf3j68kVzz0JhxBtKWyzYag7yI5jVF6R5RC0QY8w
 ```
 
+### Automatisch deployen (GitHub Actions)
+
+`.github/workflows/deploy-apps-script.yml` doet bovenstaande drie stappen zelf: bij elke push naar
+`main` die de backend raakt, of met de hand (Actions → **Deploy Apps Script** → Run workflow). Hij
+draait eerst de tests, deployt naar dezelfde deployment-ID (de URL blijft gelijk) en controleert
+daarna of de nieuwe versie onderin de webapp staat.
+
+Eenmalig nodig: secret **`CLASPRC_JSON`** in de environment **`GAS`** (Settings → Environments →
+GAS → Environment secrets → Add secret; de workflow noemt die environment) met de volledige inhoud van `~/.clasprc.json` (Windows:
+`C:\Users\<naam>\.clasprc.json`) van de pc waar `clasp login` gedaan is. Dit is geen
+alleen-lezen-sleutel: hij geeft schrijfrechten op je Apps Script-projecten, dus alleen als secret
+bewaren, nergens anders plakken. Faalt de stap "clasp push" met een inlogfout, doe dan op die pc
+`npx @google/clasp@3 login` en zet de nieuwe inhoud van `~/.clasprc.json` in het secret.
+
 ## 2. Script Properties
 
 De hoofd-app (locatie kiezen, weeroordeel bekijken) werkt zonder geheimen. `TELEGRAM_BOT_TOKEN`
@@ -126,7 +140,7 @@ meer).
 
 1. **Backend bijwerken** (eenmalig na deze wijziging): `npm run build`, `clasp push`,
    `clasp deploy --deploymentId …` (zie stap 1). Controleer onderin de webapp dat er
-   **v97** staat.
+   **v98** staat (v98: widget-data per dag, en `weeroordelen`/`metOordelen` voor snel laden in de app).
 2. **Ondertekeningssleutel** bewaren: `kiteweer-release.keystore` + `keystore.properties` (niet in
    de repo, de repo is publiek). Lokaal: zet `keystore.properties` in `android/` en pas `storeFile`
    aan naar het pad van de keystore.

@@ -4,3 +4,33 @@
 button, .chip, .icoonknop {
   -webkit-tap-highlight-color: transparent;
 }
+
+/* Updatemelding (src/app/app.js: controleerOpUpdate). */
+.update-balk {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: #1565c0;
+  color: #fff;
+  font-size: 14px;
+}
+.update-balk span { flex: 1; }
+.update-balk a { color: #fff; font-weight: bold; text-decoration: underline; }
+.update-balk-sluit {
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 20px;
+  line-height: 1;
+  padding: 0 4px;
+}
+
+/* "⟳ bijwerken…" naast de locatienaam terwijl de app op de achtergrond ververst. */
+.ververs-status {
+  margin: 0 auto 6px 8px;
+  font-size: 12px;
+  opacity: 0.65;
+  white-space: nowrap;
+}
+.ververs-status[hidden] { display: none; }

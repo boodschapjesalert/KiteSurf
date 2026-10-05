@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Eerste pagina van de widget: het overzicht (oordeel vandaag, wind, volgende kans en een
+     strook met het oordeel per dag; tik op een dag = naar die pagina). Zie KiteweerWidget.vulOverzicht. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/overzicht_root"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingBottom="2dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:baselineAligned="false"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <LinearLayout
+            android:id="@+id/overzicht_badge"
+            android:layout_width="50dp"
+            android:layout_height="50dp"
+            android:background="@drawable/widget_badge_grijs"
+            android:gravity="center"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/overzicht_score"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:includeFontPadding="false"
+                android:text="–"
+                android:textColor="#FFFFFFFF"
+                android:textSize="22sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:includeFontPadding="false"
+                android:text="/10"
+                android:textColor="#D9FFFFFF"
+                android:textSize="10sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/overzicht_dag"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:singleLine="true"
+                android:text="@string/widget_vandaag"
+                android:textColor="@color/widget_tekst_zacht"
+                android:textSize="11sp" />
+
+            <TextView
+                android:id="@+id/overzicht_verdict"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:singleLine="true"
+                android:textColor="@color/widget_tekst"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/overzicht_wind"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:singleLine="true"
+                android:textColor="@color/widget_tekst"
+                android:textSize="13sp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/overzicht_kans"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:ellipsize="end"
+        android:maxLines="2"
+        android:textColor="@color/widget_tekst"
+        android:textSize="12sp" />
+
+    <!-- Oordeel per dag: maximaal 5 chips, ongebruikte blijven GONE. -->
+    <LinearLayout
+        android:id="@+id/overzicht_dagen"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="5dp"
+        android:orientation="horizontal">
+
+        <TextView android:id="@+id/overzicht_chip1" style="@style/KiteweerChip" />
+        <TextView android:id="@+id/overzicht_chip2" style="@style/KiteweerChip" />
+        <TextView android:id="@+id/overzicht_chip3" style="@style/KiteweerChip" />
+        <TextView android:id="@+id/overzicht_chip4" style="@style/KiteweerChip" />
+        <TextView android:id="@+id/overzicht_chip5" style="@style/KiteweerChip" />
+    </LinearLayout>
+
+</LinearLayout>

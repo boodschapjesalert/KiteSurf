@@ -1,0 +1,89 @@
+# Zet de backend (Google Apps Script) live met clasp — hetzelfde als de handmatige stappen in
+# SETUP.md stap 1 (npm run build, clasp push, clasp deploy --deploymentId …), maar automatisch:
+# - bij elke push naar main die de backend raakt, en
+# - met de hand: Actions -> "Deploy Apps Script" -> Run workflow.
+# De /exec-URL blijft gelijk (vaste deployment-ID), dus webapp, Telegram-bot en Android-app werken door.
+#
+# Eenmalig nodig: secret CLASPRC_JSON in de environment "GAS" (Settings -> Environments -> GAS ->
+# Environment secrets) met de inhoud van ~/.clasprc.json van een pc waar `clasp login` gedaan is met het Google-account
+# dat het Apps Script-project bezit. Let op: dat is geen alleen-lezen-sleutel; hij geeft schrijf-
+# rechten op je Apps Script-projecten. GitHub toont secrets nooit in logs of aan forks.
+name: Deploy Apps Script
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/gas/**'
+      - 'src/logica/**'
+      - 'src/webapp/**'
+      - 'build.js'
+      - '.github/workflows/deploy-apps-script.yml'
+  workflow_dispatch:
+
+# Nooit twee deploys tegelijk; een nieuwere wacht tot de vorige klaar is.
+concurrency:
+  group: deploy-apps-script
+  cancel-in-progress: false
+
+env:
+  SCRIPT_ID: 1WdLKVPGNCa2U9lQzh4GfpJPqteHg1Huf4jelQsU_4Q1dGpiSROIxriiE
+  DEPLOYMENT_ID: AKfycbxaxYVjqJxb4IK5ep3KrVmtrMJHCVFf3j68kVzz0JhxBtKWyzYag7yI5jVF6R5RC0QY8w
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # Het secret CLASPRC_JSON staat onder Settings -> Environments -> GAS (een environment-secret):
+    # alleen jobs die deze environment noemen kunnen het lezen.
+    environment: GAS
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Afhankelijkheden
+        run: npm ci
+
+      - name: Tests (geen deploy als er iets faalt)
+        run: npm test
+
+      - name: Bouwen (dist/)
+        run: npm run build
+
+      - name: clasp-inlog en project klaarzetten
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          if [ -z "$CLASPRC_JSON" ]; then
+            echo "::error::Secret CLASPRC_JSON ontbreekt — zie de uitleg bovenin deze workflow en SETUP.md."
+            exit 1
+          fi
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          printf '{"scriptId":"%s","rootDir":"./dist"}\n' "$SCRIPT_ID" > .clasp.json
+
+      - name: clasp push
+        run: npx -y @google/clasp@3 push --force
+
+      - name: clasp deploy (zelfde deployment, nieuwe versie)
+        run: npx -y @google/clasp@3 deploy --deploymentId "$DEPLOYMENT_ID" --description "GitHub Actions ${GITHUB_SHA::7}"
+
+      - name: Controleren dat de nieuwe versie live staat
+        run: |
+          VERSIE=$(grep -oP "var KITEWEER_VERSIE = '\K[^']+" src/gas/Code.gs)
+          URL="https://script.google.com/macros/s/$DEPLOYMENT_ID/exec"
+          for poging in 1 2 3 4 5 6; do
+            if curl -sSL "$URL" | grep -qF "Kite Weer App $VERSIE"; then
+              echo "Live: $VERSIE"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::Na de deploy staat '$VERSIE' niet onderin de webapp."
+          exit 1
+
+      - name: Inlog opruimen
+        if: always()
+        run: rm -f "$HOME/.clasprc.json" .clasp.json

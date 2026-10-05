@@ -25,7 +25,7 @@ const EXEC_URL =
 const APP_VERSIE = require('./package.json').version;
 
 // Functies uit src/logica/ die de app aan de telefoonkant nodig heeft (zie src/app/app.js).
-const LOGICA_EXPORTS = ['standaardProfiel', 'valideerEnVulProfielAan', 'voegFavorieteLocatieToe', 'verwijderFavorieteLocatie'];
+const LOGICA_EXPORTS = ['standaardProfiel', 'valideerEnVulProfielAan', 'voegFavorieteLocatieToe', 'verwijderFavorieteLocatie', 'isNieuwereAppVersie', 'oordeelOpslagSleutel', 'oordeelSleutel', 'bruikbaarBewaardOordeel', 'isOordeelVers'];
 
 function leesZonderBom(bestand) {
   return fs.readFileSync(bestand, 'utf8').replace(/^﻿/, '');

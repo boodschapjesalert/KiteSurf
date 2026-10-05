@@ -11,9 +11,9 @@ Gebruikt Node's ingebouwde test runner (`node --test`, Node ≥ 18) — geen dep
 ## Resultaat (laatste run)
 
 ```
-tests 296
-suites 81
-pass 296
+tests 323
+suites 89
+pass 323
 fail 0
 ```
 
@@ -47,6 +47,19 @@ een live GAS-omgeving testbaar is):
 
 \* `bronParsers.js` telt losse export-references als functies; alle *gebruikte* parsers hebben
 minstens één test met een echte fixture.
+
+## Telegram: één chat, één profiel
+
+- **`telegramKoppeling.js`** (`test/logica/telegramKoppeling.test.js`): keuze van de zender per chat
+  (index, verouderde/ontbrekende index, getal- vs. string-chat-ID), behoud van server-velden bij
+  opslaan, herkennen van `/stop`.
+- **De echte `dist/*.gs` in Node met nagebootste Drive/Properties/Telegram** (eenmalig script, niet
+  in de repo): het gebruikersrapport nagespeeld — twee profielen aan één chat, de samenvatting uit in
+  het ene en aan in het andere. Met de oude code komen de berichten van het andere profiel (bug
+  gereproduceerd), met de nieuwe niet meer en wordt dat profiel ontkoppeld. Ook: een enkel gekoppeld
+  profiel stuurt nog gewoon (met `/stop` in het slotbericht), een verouderd tabblad zet de koppeling
+  niet terug, koppelen via deep link ontkoppelt alle andere profielen, `/stop` ontkoppelt alles en
+  een los bericht daarna maakt geen profiel aan, en een herkansing na afmelden stuurt niets.
 
 ## Android-app
 
