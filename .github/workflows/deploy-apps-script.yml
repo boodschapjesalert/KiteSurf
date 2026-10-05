@@ -4,8 +4,8 @@
 # - met de hand: Actions -> "Deploy Apps Script" -> Run workflow.
 # De /exec-URL blijft gelijk (vaste deployment-ID), dus webapp, Telegram-bot en Android-app werken door.
 #
-# Eenmalig nodig: repository-secret CLASPRC_JSON (Settings -> Secrets and variables -> Actions)
-# met de inhoud van ~/.clasprc.json van een pc waar `clasp login` gedaan is met het Google-account
+# Eenmalig nodig: secret CLASPRC_JSON in de environment "GAS" (Settings -> Environments -> GAS ->
+# Environment secrets) met de inhoud van ~/.clasprc.json van een pc waar `clasp login` gedaan is met het Google-account
 # dat het Apps Script-project bezit. Let op: dat is geen alleen-lezen-sleutel; hij geeft schrijf-
 # rechten op je Apps Script-projecten. GitHub toont secrets nooit in logs of aan forks.
 name: Deploy Apps Script
@@ -33,6 +33,9 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # Het secret CLASPRC_JSON staat onder Settings -> Environments -> GAS (een environment-secret):
+    # alleen jobs die deze environment noemen kunnen het lezen.
+    environment: GAS
     steps:
       - uses: actions/checkout@v4
 

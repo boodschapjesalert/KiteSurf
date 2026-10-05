@@ -24,8 +24,8 @@ clasp deploy --deploymentId AKfycbxaxYVjqJxb4IK5ep3KrVmtrMJHCVFf3j68kVzz0JhxBtKW
 draait eerst de tests, deployt naar dezelfde deployment-ID (de URL blijft gelijk) en controleert
 daarna of de nieuwe versie onderin de webapp staat.
 
-Eenmalig nodig: repository-secret **`CLASPRC_JSON`** (Settings → Secrets and variables → Actions →
-New repository secret) met de volledige inhoud van `~/.clasprc.json` (Windows:
+Eenmalig nodig: secret **`CLASPRC_JSON`** in de environment **`GAS`** (Settings → Environments →
+GAS → Environment secrets → Add secret; de workflow noemt die environment) met de volledige inhoud van `~/.clasprc.json` (Windows:
 `C:\Users\<naam>\.clasprc.json`) van de pc waar `clasp login` gedaan is. Dit is geen
 alleen-lezen-sleutel: hij geeft schrijfrechten op je Apps Script-projecten, dus alleen als secret
 bewaren, nergens anders plakken. Faalt de stap "clasp push" met een inlogfout, doe dan op die pc
