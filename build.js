@@ -46,9 +46,32 @@ function kopieerGas() {
   });
 }
 
+function bouwOnboardingWizardScript() {
+  const code = fs.readFileSync(path.join(SRC_LOGICA, 'onboardingWizard.js'), 'utf8');
+  return (
+    'window.KiteweerOnboardingLogica = (function () {\n' +
+    ontdoeVanNodeModuleSyntax(code) +
+    '\nreturn {\n' +
+    '  ONBOARDING_WIND_PRESETS: ONBOARDING_WIND_PRESETS,\n' +
+    '  ONBOARDING_VLAAG_PRESETS: ONBOARDING_VLAAG_PRESETS,\n' +
+    '  maakOnboardingConcept: maakOnboardingConcept,\n' +
+    '  berekenVlaagVoorbeeldKnopen: berekenVlaagVoorbeeldKnopen,\n' +
+    '  valideerOnboardingStap: valideerOnboardingStap,\n' +
+    '  pasOnboardingConceptToeOpProfiel: pasOnboardingConceptToeOpProfiel,\n' +
+    '};\n})();'
+  );
+}
+
 function kopieerWebapp() {
   fs.readdirSync(SRC_WEBAPP).forEach((bestand) => {
-    fs.copyFileSync(path.join(SRC_WEBAPP, bestand), path.join(DIST, bestand));
+    const bron = path.join(SRC_WEBAPP, bestand);
+    const doel = path.join(DIST, bestand);
+    if (bestand === 'JavaScript.html') {
+      const inhoud = fs.readFileSync(bron, 'utf8').replace('// __ONBOARDING_WIZARD_LOGICA__', bouwOnboardingWizardScript());
+      fs.writeFileSync(doel, inhoud);
+    } else {
+      fs.copyFileSync(bron, doel);
+    }
   });
 }
 
@@ -89,4 +112,4 @@ function build() {
 // ontdoeVanNodeModuleSyntax zonder meteen dist/ te herbouwen.
 if (require.main === module) build();
 
-module.exports = { ontdoeVanNodeModuleSyntax };
+module.exports = { ontdoeVanNodeModuleSyntax, build };

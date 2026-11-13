@@ -95,6 +95,68 @@
   .onboarding-kaart p { margin: 0 0 16px; font-size: 14px; line-height: 1.5; color: var(--hint); }
   .onboarding-kaart button { width: 100%; }
 
+  /* Stapsgewijze instellingen-wizard (alleen 1e keer; zelfde in-flow opbouw als .onboarding-kaart). */
+  .onboarding-wizard {
+    background: var(--bg); color: var(--tekst); border: 2px solid var(--knop-bg); border-radius: 14px;
+    padding: 16px; margin-bottom: 16px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  }
+  .wizard-kop { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .wizard-stap-label { font-size: 12px; font-weight: 700; color: var(--knop-bg); text-transform: uppercase; letter-spacing: 0.04em; }
+  .wizard-badge {
+    display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 999px; font-size: 11px;
+    font-weight: 600; background: var(--sectie-bg); color: var(--hint);
+  }
+  .wizard-badge.essentieel { background: rgba(47, 128, 237, 0.14); color: var(--knop-bg); }
+  .wizard-voortgang {
+    height: 6px; background: var(--sectie-bg); border-radius: 999px; overflow: hidden; margin: 8px 0 12px;
+  }
+  .wizard-voortgang-vulling { height: 100%; background: var(--knop-bg); border-radius: 999px; transition: width 0.2s ease; }
+  .wizard-titel { margin: 0 0 8px; font-size: 19px; }
+  .wizard-intro { margin: 0 0 10px; font-size: 14px; line-height: 1.45; color: var(--tekst); }
+  .wizard-uitlegblok {
+    background: var(--sectie-bg); border-left: 3px solid var(--knop-bg); border-radius: 10px;
+    padding: 10px 12px; margin-bottom: 12px; font-size: 13px; line-height: 1.45;
+  }
+  .wizard-uitlegblok ul { margin: 4px 0 0; padding-left: 18px; }
+  .wizard-uitlegblok li + li { margin-top: 4px; }
+  .wizard-presets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .wizard-preset {
+    background: var(--sectie-bg); color: var(--tekst); border: 1px solid rgba(128, 128, 128, 0.35);
+    border-radius: 10px; padding: 7px 10px; font-size: 12px; text-align: left; cursor: pointer;
+  }
+  .wizard-preset strong { display: block; font-size: 13px; }
+  .wizard-preset span { color: var(--hint); font-size: 11px; }
+  .wizard-preset.actief { border-color: var(--knop-bg); background: rgba(47, 128, 237, 0.12); }
+  .wizard-windbalk {
+    display: flex; border-radius: 8px; overflow: hidden; margin: 10px 0 4px;
+    font-size: 11px; font-weight: 600; text-align: center;
+  }
+  .wizard-windbalk span { flex: 1; padding: 6px 4px; white-space: nowrap; }
+  .wizard-windbalk .wb-rood { background: rgba(231, 76, 60, 0.18); color: var(--rood); }
+  .wizard-windbalk .wb-oranje { background: rgba(245, 166, 35, 0.2); color: var(--oranje); }
+  .wizard-windbalk .wb-groen { background: rgba(46, 204, 113, 0.22); color: var(--groen); }
+  .wizard-rekenvoorbeeld {
+    background: var(--sectie-bg); border-radius: 10px; padding: 10px 12px; margin-top: 10px;
+    font-size: 13px; line-height: 1.45;
+  }
+  .wizard-veldnoot { font-size: 12px; color: var(--hint); margin: -2px 0 8px; line-height: 1.4; }
+  .wizard-spotlijst { display: flex; flex-direction: column; gap: 6px; margin: 8px 0 12px; }
+  .wizard-spotitem {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 8px 10px; border-radius: 8px; background: var(--sectie-bg); font-size: 13px;
+  }
+  .wizard-spotbadge {
+    font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 999px;
+    background: rgba(46, 204, 113, 0.18); color: var(--groen); flex: none;
+  }
+  .wizard-melding {
+    border-radius: 10px; padding: 9px 11px; margin-top: 10px; font-size: 13px; line-height: 1.4;
+  }
+  .wizard-melding.fout { background: rgba(231, 76, 60, 0.12); border: 1px solid rgba(231, 76, 60, 0.4); color: var(--tekst); }
+  .wizard-melding.waarschuwing { background: rgba(245, 166, 35, 0.15); border: 1px solid var(--oranje); color: var(--tekst); }
+  .wizard-voet { justify-content: space-between; }
+  .wizard-voet button { flex: 1; }
+
   .zoekbalk { display: flex; gap: 8px; margin-bottom: 8px; }
   .zoekbalk input {
     flex: 1; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--hint);
@@ -283,7 +345,7 @@
 
   .veldrij { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--hint); }
   .veldrij label { flex: 1; font-size: 14px; }
-  .veldrij input { width: 90px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--hint); background: var(--bg); color: var(--tekst); }
+  .veldrij input, .veldrij select { width: 90px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--hint); background: var(--bg); color: var(--tekst); }
   .veldgroep { margin-bottom: 14px; }
   .veldgroep h3 { font-size: 15px; margin: 16px 0 4px; }
   /* Score-berekening staat in een <details>-uitklapmenu (gevorderde instelling, standaard dicht). */

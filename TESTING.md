@@ -11,13 +11,13 @@ Gebruikt Node's ingebouwde test runner (`node --test`, Node ≥ 18) — geen dep
 ## Resultaat (laatste run)
 
 ```
-tests 340
-suites 98
-pass 340
+tests 348
+suites 101
+pass 348
 fail 0
 ```
 
-(Incl. nieuwere tests voor circulaire windrichtingmiddeling, zonsondergang + 30 min cut-off in score/samenvatting/widget, `isToegestaneUpdateUrl`, `nVlaag`-weging in modelverificatie, de 20-locatielimiet, `parseRwsWindMeting` verouderingstest (60 min) en `test/build.test.js`; oudere coverage-tabel hieronder is van vóór deze toevoegingen.)
+(Incl. nieuwere tests voor circulaire windrichtingmiddeling, zonsondergang + 30 min cut-off in score/samenvatting/widget, `isToegestaneUpdateUrl`, `nVlaag`-weging in modelverificatie, de 20-locatielimiet, `parseRwsWindMeting` verouderingstest (60 min), `test/logica/onboardingWizard.test.js` en `test/build.test.js`; oudere coverage-tabel hieronder is van vóór deze toevoegingen.)
 
 (26 sep 2026: +22 tests in `test/logica/appApi.test.js` voor de Android-app-API, zie
 "Android-app" hieronder.)

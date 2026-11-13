@@ -11,7 +11,7 @@
 // Handmatig ophogen bij elke betekenisvolle wijziging/deploy — zichtbaar onderin de app, zodat
 // eenvoudig te controleren is of een nieuwe versie daadwerkelijk live staat (i.p.v. een gecachete
 // oudere versie in de browser).
-var KITEWEER_VERSIE = 'v100 (13 nov 2026)';
+var KITEWEER_VERSIE = 'v101 (13 nov 2026)';
 
 /**
  * Verkort een URL via TinyURL's geauthenticeerde API (eigen account + API-token in Script

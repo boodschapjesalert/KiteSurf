@@ -1632,9 +1632,458 @@
     return '<svg class="grafiek-windlijn" viewBox="0 0 100 100" preserveAspectRatio="none">' + polylines + '</svg>';
   }
 
+  // __ONBOARDING_WIZARD_LOGICA__
+  var wizardLogica = window.KiteweerOnboardingLogica || window.KiteweerLogica;
+  var WIZARD_AANTAL_STAPPEN = 6;
+  var wizardConcept = null;
+  var wizardHuidigeStap = 0;
+
+  function leesNummerInput(id) {
+    var el = document.getElementById(id);
+    if (!el) return null;
+    var raw = el.value.trim();
+    return raw === '' ? null : Number(raw);
+  }
+
+  function formatGetalOfLeeg(x) {
+    return x == null ? 'leeg (neutraal)' : String(x);
+  }
+
+  function voegWizardUitlegToe(container, introTekst, items) {
+    var intro = document.createElement('p');
+    intro.className = 'wizard-intro';
+    intro.textContent = introTekst;
+    container.appendChild(intro);
+
+    if (items && items.length) {
+      var blok = document.createElement('div');
+      blok.className = 'wizard-uitlegblok';
+      var lijst = document.createElement('ul');
+      items.forEach(function (item) {
+        var li = document.createElement('li');
+        var sterk = document.createElement('strong');
+        sterk.textContent = item.label + ': ';
+        li.appendChild(sterk);
+        li.appendChild(document.createTextNode(item.tekst));
+        lijst.appendChild(li);
+      });
+      blok.appendChild(lijst);
+      container.appendChild(blok);
+    }
+  }
+
+  function voegWizardNootToe(parent, tekst) {
+    var p = document.createElement('p');
+    p.className = 'wizard-veldnoot';
+    p.textContent = tekst;
+    parent.appendChild(p);
+  }
+
+  function toonWizardMelding(tekst, type) {
+    var box = document.getElementById('wizardMelding');
+    if (!tekst) {
+      box.hidden = true;
+      box.textContent = '';
+      box.className = 'wizard-melding';
+      return;
+    }
+    box.className = 'wizard-melding ' + (type || 'fout');
+    box.textContent = (type === 'waarschuwing' ? '💡 ' : '⚠️ ') + tekst;
+    box.hidden = false;
+  }
+
+  function leesWizardStapUitDom(stapIndex) {
+    if (!wizardConcept) return;
+    if (stapIndex === 0) {
+      wizardConcept.windsnelheid.minimum = leesNummerInput('wiz-wind-minimum');
+      wizardConcept.windsnelheid.ideaalOnder = leesNummerInput('wiz-wind-ideaalOnder');
+      wizardConcept.windsnelheid.ideaalBoven = leesNummerInput('wiz-wind-ideaalBoven');
+      wizardConcept.windsnelheid.maximum = leesNummerInput('wiz-wind-maximum');
+    } else if (stapIndex === 1) {
+      wizardConcept.windvlagen.waarschuwingVlaagfactor = leesNummerInput('wiz-vlaag-waarschuwing');
+      wizardConcept.windvlagen.maxVlaagfactor = leesNummerInput('wiz-vlaag-max');
+    } else if (stapIndex === 2) {
+      var su = leesNummerInput('wiz-dagvenster-start');
+      var eu = leesNummerInput('wiz-dagvenster-eind');
+      var ms = leesNummerInput('wiz-minimalesessieuren');
+      var dv = leesNummerInput('wiz-dagenvooruit');
+      wizardConcept.dagvenster.startUur = su != null ? su : wizardConcept.dagvenster.startUur;
+      wizardConcept.dagvenster.eindUur = eu != null ? eu : wizardConcept.dagvenster.eindUur;
+      wizardConcept.minimaleSessieUren = ms != null ? ms : wizardConcept.minimaleSessieUren;
+      wizardConcept.dagenVooruit = dv != null ? dv : wizardConcept.dagenVooruit;
+    } else if (stapIndex === 3) {
+      var hardNoGo = document.getElementById('wiz-onweer-hardNoGo');
+      if (hardNoGo) wizardConcept.onweer.hardNoGo = hardNoGo.checked;
+      wizardConcept.onweer.neerslagWaarschuwingDrempel = leesNummerInput('wiz-onweer-neerslag');
+      wizardConcept.langdurigeRegen.minimumUrenAchtereen = leesNummerInput('wiz-regen-uren');
+      wizardConcept.langdurigeRegen.minimumMmPerUur = leesNummerInput('wiz-regen-mm');
+      wizardConcept.luchttemperatuur.minimumComfortabel = leesNummerInput('wiz-lucht-min');
+      wizardConcept.watertemperatuur.minimumComfortabel = leesNummerInput('wiz-water-comfort');
+      wizardConcept.watertemperatuur.minimumMetWetsuit = leesNummerInput('wiz-water-wetsuit');
+      wizardConcept.golfhoogte.maximum = leesNummerInput('wiz-golf-max');
+      var voorkeurGolven = document.getElementById('wiz-golf-voorkeur');
+      if (voorkeurGolven) wizardConcept.golfhoogte.voorkeurGolven = voorkeurGolven.checked;
+      wizardConcept.zicht.minimum = leesNummerInput('wiz-zicht-min');
+      var getij = document.getElementById('wiz-getij-voorkeur');
+      if (getij) wizardConcept.getij.voorkeur = getij.value;
+    } else if (stapIndex === 5) {
+      var samenvatting = document.getElementById('wiz-meldingen-samenvatting');
+      var alertCb = document.getElementById('wiz-meldingen-directealert');
+      var tijd = document.getElementById('wiz-meldingen-tijd');
+      if (samenvatting) wizardConcept.meldingen.dagelijkseSamenvatting = samenvatting.checked;
+      if (alertCb) wizardConcept.meldingen.directeAlert = alertCb.checked;
+      if (tijd && tijd.value) {
+        var delen = tijd.value.split(':');
+        wizardConcept.meldingen.samenvattingUur = Number(delen[0]);
+        wizardConcept.meldingen.samenvattingMinuut = Number(delen[1]);
+      }
+    }
+  }
+
+  function werkWizardWindBalkBij(balkEl) {
+    if (!balkEl || !wizardConcept) return;
+    var w = wizardConcept.windsnelheid;
+    var min = w.minimum != null ? w.minimum : '?';
+    var io = w.ideaalOnder != null ? w.ideaalOnder : '?';
+    var ib = w.ideaalBoven != null ? w.ideaalBoven : '?';
+    var maxTekst = w.maximum != null ? ('> ' + w.maximum + ' kn') : 'geen max';
+    balkEl.innerHTML =
+      '<span class="wb-rood">&lt; ' + escapeHtml(min) + ' Rood</span>' +
+      '<span class="wb-oranje">' + escapeHtml(min) + '–' + escapeHtml(io) + ' Oranje</span>' +
+      '<span class="wb-groen">' + escapeHtml(io) + '–' + escapeHtml(ib) + ' Groen</span>' +
+      '<span class="wb-rood">' + escapeHtml(maxTekst) + '</span>';
+  }
+
+  function werkWizardVlaagVoorbeeldBij(voorbeeldEl) {
+    if (!voorbeeldEl || !wizardConcept || !wizardLogica) return;
+    var w = wizardConcept.windsnelheid;
+    var basis = (w.ideaalOnder != null && w.ideaalBoven != null) ? (w.ideaalOnder + w.ideaalBoven) / 2 : 20;
+    var v = wizardConcept.windvlagen;
+    var res = wizardLogica.berekenVlaagVoorbeeldKnopen(basis, v.waarschuwingVlaagfactor, v.maxVlaagfactor);
+    if (res.waarschuwingKnopen == null && res.maxKnopen == null) {
+      voorbeeldEl.textContent = 'Kies een preset of vul waarden in (bijv. 0.3 en 0.5) om direct het effect bij ' + res.basisKnopen + ' knopen wind te zien.';
+    } else {
+      var delen = [];
+      if (res.waarschuwingKnopen != null) {
+        delen.push('waarschuwing (oranje) vanaf ' + res.waarschuwingKnopen + ' kn (+' + res.waarschuwingPct + '%)');
+      }
+      if (res.maxKnopen != null) {
+        delen.push('rood / no-go vanaf ' + res.maxKnopen + ' kn (+' + res.maxPct + '%)');
+      }
+      voorbeeldEl.textContent = 'Rekenvoorbeeld bij ' + res.basisKnopen + ' kn wind: ' + delen.join(', ') + '.';
+    }
+    var check = wizardLogica.valideerOnboardingStap(1, wizardConcept);
+    if (check.waarschuwing) toonWizardMelding(check.waarschuwing, 'waarschuwing');
+    else toonWizardMelding(null);
+  }
+
+  function renderWizardStap() {
+    var inhoud = document.getElementById('wizardInhoud');
+    var stapLabel = document.getElementById('wizardStapLabel');
+    var badge = document.getElementById('wizardBadge');
+    var titel = document.getElementById('wizardTitel');
+    var voortgang = document.getElementById('wizardVoortgangVulling');
+    var vorigeKnop = document.getElementById('wizardVorigeKnop');
+    var volgendeKnop = document.getElementById('wizardVolgendeKnop');
+
+    inhoud.innerHTML = '';
+    toonWizardMelding(null);
+
+    var stapNr = wizardHuidigeStap + 1;
+    stapLabel.textContent = 'Stap ' + stapNr + ' van ' + WIZARD_AANTAL_STAPPEN;
+    voortgang.style.width = Math.round((stapNr / WIZARD_AANTAL_STAPPEN) * 100) + '%';
+    vorigeKnop.hidden = wizardHuidigeStap === 0;
+    volgendeKnop.textContent = wizardHuidigeStap === WIZARD_AANTAL_STAPPEN - 1 ? '✓ Opslaan & start app' : 'Volgende →';
+
+    if (wizardHuidigeStap === 0) {
+      badge.textContent = 'Essentieel';
+      badge.className = 'wizard-badge essentieel';
+      titel.textContent = '1. Hoeveel wind heb je nodig?';
+      voegWizardUitlegToe(inhoud, 'Stel je windbereik in knopen in. Zonder minimum en ideaal bereik kan de app geen betrouwbare kleur kiezen.', [
+        { label: 'In de app & widget', tekst: 'Onder Minimum of boven Maximum wordt een uur of dag rood (no-go). Binnen Ideaal scoort wind 100% (groen); ertussen kleurt hij oranje.' },
+        { label: 'Tip', tekst: 'Kies eventueel een startprofiel hieronder als richtlijn en pas daarna rustig de getallen aan.' },
+      ]);
+
+      var presetsRij = document.createElement('div');
+      presetsRij.className = 'wizard-presets';
+      var balkEl = document.createElement('div');
+      balkEl.className = 'wizard-windbalk';
+
+      function syncWindInputs() {
+        document.getElementById('wiz-wind-minimum').value = wizardConcept.windsnelheid.minimum != null ? wizardConcept.windsnelheid.minimum : '';
+        document.getElementById('wiz-wind-ideaalOnder').value = wizardConcept.windsnelheid.ideaalOnder != null ? wizardConcept.windsnelheid.ideaalOnder : '';
+        document.getElementById('wiz-wind-ideaalBoven').value = wizardConcept.windsnelheid.ideaalBoven != null ? wizardConcept.windsnelheid.ideaalBoven : '';
+        document.getElementById('wiz-wind-maximum').value = wizardConcept.windsnelheid.maximum != null ? wizardConcept.windsnelheid.maximum : '';
+        werkWizardWindBalkBij(balkEl);
+      }
+
+      (wizardLogica.ONBOARDING_WIND_PRESETS || []).forEach(function (preset) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'wizard-preset';
+        btn.innerHTML = '<strong>' + escapeHtml(preset.label) + '</strong><span>' + escapeHtml(preset.beschrijving) + '</span>';
+        btn.onclick = function () {
+          wizardConcept.windsnelheid = Object.assign({}, preset.windsnelheid);
+          Array.prototype.forEach.call(presetsRij.querySelectorAll('.wizard-preset'), function (b) { b.classList.remove('actief'); });
+          btn.classList.add('actief');
+          syncWindInputs();
+          toonWizardMelding(null);
+        };
+        presetsRij.appendChild(btn);
+      });
+      inhoud.appendChild(presetsRij);
+
+      var velden = [
+        ['minimum', 'Minimum (kn) — onder dit punt is rood', 'wiz-wind-minimum'],
+        ['ideaalOnder', 'Ideaal vanaf (kn)', 'wiz-wind-ideaalOnder'],
+        ['ideaalBoven', 'Ideaal tot (kn)', 'wiz-wind-ideaalBoven'],
+        ['maximum', 'Maximum (kn, leeg = geen bovengrens)', 'wiz-wind-maximum'],
+      ];
+      velden.forEach(function (v) {
+        var rij = bouwNummerVeldVoorObject(wizardConcept.windsnelheid, v[0], v[1], v[2]);
+        rij.querySelector('input').addEventListener('input', function () {
+          leesWizardStapUitDom(0);
+          werkWizardWindBalkBij(balkEl);
+        });
+        inhoud.appendChild(rij);
+      });
+      werkWizardWindBalkBij(balkEl);
+      inhoud.appendChild(balkEl);
+    } else if (wizardHuidigeStap === 1) {
+      badge.textContent = 'Essentieel';
+      badge.className = 'wizard-badge essentieel';
+      titel.textContent = '2. Hoe gevoelig ben je voor windvlagen?';
+      voegWizardUitlegToe(inhoud, 'De vlaagfactor is de extra marge bovenop de gemiddelde wind — dus 0.3 betekent +30% vlagen (en 0.5 is +50%, niet 1.5).', [
+        { label: 'In de app', tekst: 'Boven Waarschuwing vanaf zakt de score en verschijnt een waarschuwing; boven No-go vanaf kleurt de periode rood.' },
+        { label: 'Op de widget', tekst: 'Toont de actuele wind én de vlaag daarachter; te vlagerige uren tellen niet als geschikt kitemoment.' },
+      ]);
+
+      var vlaagPresets = document.createElement('div');
+      vlaagPresets.className = 'wizard-presets';
+      var voorbeeldEl = document.createElement('div');
+      voorbeeldEl.className = 'wizard-rekenvoorbeeld';
+
+      (wizardLogica.ONBOARDING_VLAAG_PRESETS || []).forEach(function (preset) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'wizard-preset';
+        btn.innerHTML = '<strong>' + escapeHtml(preset.label) + '</strong><span>' + preset.waarschuwingVlaagfactor + ' / ' + preset.maxVlaagfactor + '</span>';
+        btn.onclick = function () {
+          wizardConcept.windvlagen.waarschuwingVlaagfactor = preset.waarschuwingVlaagfactor;
+          wizardConcept.windvlagen.maxVlaagfactor = preset.maxVlaagfactor;
+          document.getElementById('wiz-vlaag-waarschuwing').value = preset.waarschuwingVlaagfactor;
+          document.getElementById('wiz-vlaag-max').value = preset.maxVlaagfactor;
+          Array.prototype.forEach.call(vlaagPresets.querySelectorAll('.wizard-preset'), function (b) { b.classList.remove('actief'); });
+          btn.classList.add('actief');
+          werkWizardVlaagVoorbeeldBij(voorbeeldEl);
+        };
+        vlaagPresets.appendChild(btn);
+      });
+      inhoud.appendChild(vlaagPresets);
+
+      var wRij = bouwNummerVeldVoorObject(wizardConcept.windvlagen, 'waarschuwingVlaagfactor', 'Waarschuwing vanaf (bijv. 0.3 = +30%)', 'wiz-vlaag-waarschuwing');
+      var mRij = bouwNummerVeldVoorObject(wizardConcept.windvlagen, 'maxVlaagfactor', 'No-go vanaf (bijv. 0.5 = +50%)', 'wiz-vlaag-max');
+      wRij.querySelector('input').addEventListener('input', function () { leesWizardStapUitDom(1); werkWizardVlaagVoorbeeldBij(voorbeeldEl); });
+      mRij.querySelector('input').addEventListener('input', function () { leesWizardStapUitDom(1); werkWizardVlaagVoorbeeldBij(voorbeeldEl); });
+      inhoud.appendChild(wRij);
+      inhoud.appendChild(mRij);
+      werkWizardVlaagVoorbeeldBij(voorbeeldEl);
+      inhoud.appendChild(voorbeeldEl);
+    } else if (wizardHuidigeStap === 2) {
+      badge.textContent = 'App & Widget';
+      badge.className = 'wizard-badge';
+      titel.textContent = '3. Dagvenster, sessieduur & vooruitblik';
+      voegWizardUitlegToe(inhoud, 'Bepaal tussen welke uren en over hoeveel dagen de app vooruit rekent.', [
+        { label: 'Grafiek in App & Widget', tekst: 'Dagvenster bepaalt welke uren meetellen én welke balkjes je ziet (altijd automatisch afgekapt tot uiterlijk 30 min na zonsondergang).' },
+        { label: 'Beste venster & Widget-pagina\'s', tekst: 'Minimale sessieduur voorkomt dat 1 los uurtje groen wordt; Voorspellingshorizon bepaalt het aantal dagkaarten en widget-pagina\'s.' },
+      ]);
+
+      inhoud.appendChild(bouwNummerVeldVoorObject(wizardConcept.dagvenster, 'startUur', 'Dagvenster vanaf uur (0–23)', 'wiz-dagvenster-start'));
+      inhoud.appendChild(bouwNummerVeldVoorObject(wizardConcept.dagvenster, 'eindUur', 'Dagvenster tot uur (0–23)', 'wiz-dagvenster-eind'));
+      voegWizardNootToe(inhoud, 'Standaard 09:00–20:00. Uren na zonsondergang + 30 min vallen automatisch af.');
+
+      inhoud.appendChild(bouwNummerVeldVoorObject(wizardConcept, 'minimaleSessieUren', 'Minimale sessieduur (1–8 uur)', 'wiz-minimalesessieuren'));
+      voegWizardNootToe(inhoud, 'Hoeveel uur de wind achter elkaar goed moet zijn voor een groene score (standaard 2 uur).');
+
+      inhoud.appendChild(bouwNummerVeldVoorObject(wizardConcept, 'dagenVooruit', 'Voorspellingshorizon (1–10 dagen)', 'wiz-dagenvooruit'));
+      voegWizardNootToe(inhoud, 'Standaard 3 dagen. Vanaf dag 5 zijn minder weerbronnen beschikbaar en wordt het oordeel indicatief.');
+    } else if (wizardHuidigeStap === 3) {
+      badge.textContent = 'Optioneel';
+      badge.className = 'wizard-badge';
+      titel.textContent = '4. Veiligheid, water & comfort';
+      voegWizardUitlegToe(inhoud, 'Alles wat je hier leeg laat telt neutraal mee (geeft nooit rood). Alleen onweer staat uit veiligheid standaard als harde no-go aan.', [
+        { label: 'Onweer vs. regen', tekst: 'Onweer blokkeert veiligheidshalve de sessie. Hoge buienkans (0–1, dus 0.5 = 50%) en langdurige regen drukken alleen de score/kleur.' },
+        { label: 'Comfort & water', tekst: 'Temperatuur, golven, zicht en getij helpen je score verfijnen tussen een matige en top-sessie.' },
+      ]);
+
+      var onweerSub = document.createElement('div');
+      onweerSub.className = 'veldsubgroep';
+      onweerSub.innerHTML = '<h4>⛈️ Onweer &amp; regen</h4>';
+      onweerSub.appendChild(bouwCheckboxVeldVoorObject(wizardConcept.onweer, 'hardNoGo', 'Onweer is altijd een no-go', 'wiz-onweer-hardNoGo'));
+      onweerSub.appendChild(bouwNummerVeldVoorObject(wizardConcept.onweer, 'neerslagWaarschuwingDrempel', 'Buien-waarschuwing (0–1, bv. 0.5 = 50%)', 'wiz-onweer-neerslag'));
+      onweerSub.appendChild(bouwNummerVeldVoorObject(wizardConcept.langdurigeRegen, 'minimumUrenAchtereen', 'Langdurige regen: vanaf aantal uur achter elkaar', 'wiz-regen-uren'));
+      onweerSub.appendChild(bouwNummerVeldVoorObject(wizardConcept.langdurigeRegen, 'minimumMmPerUur', 'Langdurige regen: vanaf mm regen per uur', 'wiz-regen-mm'));
+      inhoud.appendChild(onweerSub);
+
+      var comfortSub = document.createElement('div');
+      comfortSub.className = 'veldsubgroep';
+      comfortSub.innerHTML = '<h4>🌡️ Temperatuur, water &amp; zicht</h4>';
+      comfortSub.appendChild(bouwNummerVeldVoorObject(wizardConcept.luchttemperatuur, 'minimumComfortabel', 'Lucht comfortabel vanaf (°C)', 'wiz-lucht-min'));
+      comfortSub.appendChild(bouwNummerVeldVoorObject(wizardConcept.watertemperatuur, 'minimumComfortabel', 'Water zonder wetsuit vanaf (°C)', 'wiz-water-comfort'));
+      comfortSub.appendChild(bouwNummerVeldVoorObject(wizardConcept.watertemperatuur, 'minimumMetWetsuit', 'Water met wetsuit vanaf (°C)', 'wiz-water-wetsuit'));
+      comfortSub.appendChild(bouwNummerVeldVoorObject(wizardConcept.golfhoogte, 'maximum', 'Maximale golfhoogte (m)', 'wiz-golf-max'));
+      comfortSub.appendChild(bouwCheckboxVeldVoorObject(wizardConcept.golfhoogte, 'voorkeurGolven', 'Ik zoek juist golven (hoger = betere score)', 'wiz-golf-voorkeur'));
+      comfortSub.appendChild(bouwNummerVeldVoorObject(wizardConcept.zicht, 'minimum', 'Minimum zicht (km)', 'wiz-zicht-min'));
+
+      var getijRij = document.createElement('div');
+      getijRij.className = 'veldrij';
+      var getijLabel = document.createElement('label');
+      getijLabel.textContent = 'Getij-voorkeur';
+      var getijSelect = document.createElement('select');
+      getijSelect.id = 'wiz-getij-voorkeur';
+      ['geen', 'hoog', 'laag'].forEach(function (optie) {
+        var o = document.createElement('option');
+        o.value = optie;
+        o.textContent = optie;
+        if (wizardConcept.getij.voorkeur === optie) o.selected = true;
+        getijSelect.appendChild(o);
+      });
+      getijRij.appendChild(getijLabel);
+      getijRij.appendChild(getijSelect);
+      comfortSub.appendChild(getijRij);
+      inhoud.appendChild(comfortSub);
+    } else if (wizardHuidigeStap === 4) {
+      badge.textContent = 'Startscherm';
+      badge.className = 'wizard-badge';
+      titel.textContent = '5. Jouw favoriete spots & de Widget';
+      var favorieten = profiel.favorieteLocaties || [];
+      var eersteNaam = favorieten[0] ? favorieten[0].naam : 'je eerste favoriet';
+      voegWizardUitlegToe(inhoud, 'Windrichting is per spot verschillend (aanlandig vs. aflandig) en hoort daarom bij elke favoriet apart.', [
+        { label: 'In de app', tekst: 'Met de zoekbalk bovenin voeg je eigen spots toe en geef je per spot de veilige cross-shore windrichting (0–360°) op.' },
+        { label: 'Op de widget', tekst: 'De startscherm-widget volgt automatisch je 1e favoriet (' + eersteNaam + ') en toont vandaag, huidige wind, eerstvolgende goede moment en daggrafiek.' },
+      ]);
+
+      var spotLijst = document.createElement('div');
+      spotLijst.className = 'wizard-spotlijst';
+      favorieten.forEach(function (loc, idx) {
+        var item = document.createElement('div');
+        item.className = 'wizard-spotitem';
+        var naamSpan = document.createElement('span');
+        naamSpan.textContent = (idx + 1) + '. ' + loc.naam;
+        item.appendChild(naamSpan);
+        if (idx === 0) {
+          var spotBadge = document.createElement('span');
+          spotBadge.className = 'wizard-spotbadge';
+          spotBadge.textContent = 'Widget-spot';
+          item.appendChild(spotBadge);
+        }
+        spotLijst.appendChild(item);
+      });
+      inhoud.appendChild(spotLijst);
+
+      var widgetTip = document.createElement('div');
+      widgetTip.className = 'wizard-rekenvoorbeeld';
+      if (IS_APP) {
+        widgetTip.innerHTML = '<strong>Widget toevoegen:</strong> houd een lege plek op je Android-startscherm ingedrukt → <strong>Widgets</strong> → <strong>Kite Weer App</strong>. Tik op de pijl-knoppen op de widget om door de dagen te bladeren.';
+      } else {
+        widgetTip.innerHTML = '<strong>Webapp &amp; Widget:</strong> in de Android-app zit de widget ingebouwd. Via <strong>⚙️ Instellingen</strong> vind je na het afronden ook de APK-download en je Telegram-koppelknop.';
+      }
+      inhoud.appendChild(widgetTip);
+    } else if (wizardHuidigeStap === 5) {
+      badge.textContent = 'Afronden';
+      badge.className = 'wizard-badge';
+      titel.textContent = '6. Meldingen & samenvatting';
+      voegWizardUitlegToe(inhoud, 'Kies wanneer je automatisch bericht wilt krijgen zodra je instellingen kloppen.', [
+        { label: 'Dagelijkse samenvatting', tekst: 'Elke dag op een vast tijdstip één overzicht voor je favorieten over je hele horizon.' },
+        { label: 'Directe alert', tekst: 'Eén melding zodra een dag nieuw Groen wordt' + (IS_APP ? ' (stil tussen 22:30 en 07:00).' : ' (via Telegram).') },
+      ]);
+
+      var meldBlok = document.createElement('div');
+      meldBlok.className = 'veldsubgroep';
+      meldBlok.appendChild(bouwCheckboxVeldVoorObject(wizardConcept.meldingen, 'dagelijkseSamenvatting', 'Dagelijkse samenvatting inschakelen', 'wiz-meldingen-samenvatting'));
+      meldBlok.appendChild(bouwTijdstipVeld(wizardConcept.meldingen, 'wiz-meldingen-tijd'));
+      meldBlok.appendChild(bouwCheckboxVeldVoorObject(wizardConcept.meldingen, 'directeAlert', 'Directe alert bij nieuwe groene dag', 'wiz-meldingen-directealert'));
+      inhoud.appendChild(meldBlok);
+
+      var samenvatting = document.createElement('div');
+      samenvatting.className = 'wizard-rekenvoorbeeld';
+      var ws = wizardConcept.windsnelheid;
+      var wv = wizardConcept.windvlagen;
+      var fav = (profiel.favorieteLocaties || [])[0];
+      samenvatting.innerHTML =
+        '<strong>Jouw overzicht:</strong><br />' +
+        '• Wind: min ' + escapeHtml(formatGetalOfLeeg(ws.minimum)) + ' kn · ideaal ' + escapeHtml(formatGetalOfLeeg(ws.ideaalOnder)) + '–' + escapeHtml(formatGetalOfLeeg(ws.ideaalBoven)) + ' kn' +
+        (ws.maximum != null ? ' · max ' + escapeHtml(ws.maximum) + ' kn' : '') + '<br />' +
+        '• Vlagen: waarschuwing +' + escapeHtml(wv.waarschuwingVlaagfactor != null ? Math.round(wv.waarschuwingVlaagfactor * 100) + '%' : '?') +
+        ' · no-go +' + escapeHtml(wv.maxVlaagfactor != null ? Math.round(wv.maxVlaagfactor * 100) + '%' : '?') + '<br />' +
+        '• Venster: ' + escapeHtml(wizardConcept.dagvenster.startUur) + ':00–' + escapeHtml(wizardConcept.dagvenster.eindUur) + ':00 · min ' +
+        escapeHtml(wizardConcept.minimaleSessieUren) + 'u · ' + escapeHtml(wizardConcept.dagenVooruit) + ' dagen vooruit<br />' +
+        '• Widget-spot: ' + escapeHtml(fav ? fav.naam : 'geen favoriet');
+      inhoud.appendChild(samenvatting);
+      voegWizardNootToe(inhoud, 'De onderlinge weging van wind, richting, vlagen en getij staat op standaard en is voor gevorderden altijd aan te passen onder ⚙️ Instellingen → Score-berekening.');
+    }
+  }
+
+  function openOnboardingWizard() {
+    if (!wizardLogica || !profiel) {
+      openInstellingen();
+      return;
+    }
+    wizardConcept = wizardLogica.maakOnboardingConcept(profiel);
+    wizardHuidigeStap = 0;
+    document.getElementById('onboardingKaart').hidden = true;
+    verberg('instellingenSectie');
+    try { localStorage.setItem(ONBOARDING_GEZIEN_SLEUTEL, '1'); } catch (e) {}
+    toon('onboardingWizard');
+    renderWizardStap();
+    springNaar('onboardingWizard');
+  }
+
+  function sluitOnboardingWizard() {
+    verberg('onboardingWizard');
+    try { localStorage.setItem(ONBOARDING_GEZIEN_SLEUTEL, '1'); } catch (e) {}
+    werkConfiguratieBannerBij();
+  }
+
+  function gaNaarWizardStap(nieuweStap) {
+    leesWizardStapUitDom(wizardHuidigeStap);
+    if (nieuweStap > wizardHuidigeStap) {
+      var check = wizardLogica.valideerOnboardingStap(wizardHuidigeStap, wizardConcept);
+      if (!check.ok) {
+        toonWizardMelding(check.fouten[0], 'fout');
+        return;
+      }
+    }
+    wizardHuidigeStap = Math.max(0, Math.min(WIZARD_AANTAL_STAPPEN - 1, nieuweStap));
+    renderWizardStap();
+    springNaar('onboardingWizard');
+  }
+
+  function slaOnboardingWizardOp() {
+    leesWizardStapUitDom(wizardHuidigeStap);
+    var check = wizardLogica.valideerOnboardingStap(wizardHuidigeStap, wizardConcept);
+    if (!check.ok) {
+      toonWizardMelding(check.fouten[0], 'fout');
+      return;
+    }
+    profiel = wizardLogica.pasOnboardingConceptToeOpProfiel(profiel, wizardConcept);
+    var knop = document.getElementById('wizardVolgendeKnop');
+    var oorspronkelijk = knop.textContent;
+    slaProfielOp(function () {
+      werkConfiguratieBannerBij();
+      knop.textContent = '✓ Opgeslagen';
+      setTimeout(function () {
+        knop.textContent = oorspronkelijk;
+        verberg('onboardingWizard');
+        if (huidigeLocatie) kiesLocatie(huidigeLocatie);
+      }, 600);
+    });
+  }
+
   // --- Instellingen (drempelwaarden + meldingen) ---
 
   function openInstellingen() {
+    verberg('onboardingWizard');
     renderInstellingenFormulier();
     toon('instellingenSectie');
     springNaar('instellingenSectie');
@@ -2210,10 +2659,15 @@
     document.getElementById('sluitVergelijkKnop').onclick = function () { verberg('vergelijkSectie'); };
     document.getElementById('themaKnop').onclick = wisselThema;
     werkThemaKnopBij();
-    document.getElementById('onboardingKnop').onclick = function () {
-      document.getElementById('onboardingKaart').hidden = true;
-      try { localStorage.setItem(ONBOARDING_GEZIEN_SLEUTEL, '1'); } catch (e) {}
-      openInstellingen();
+    document.getElementById('onboardingKnop').onclick = openOnboardingWizard;
+    document.getElementById('wizardSluitKnop').onclick = sluitOnboardingWizard;
+    document.getElementById('wizardOverslaanKnop').onclick = sluitOnboardingWizard;
+    document.getElementById('wizardVorigeKnop').onclick = function () {
+      gaNaarWizardStap(wizardHuidigeStap - 1);
+    };
+    document.getElementById('wizardVolgendeKnop').onclick = function () {
+      if (wizardHuidigeStap >= WIZARD_AANTAL_STAPPEN - 1) slaOnboardingWizardOp();
+      else gaNaarWizardStap(wizardHuidigeStap + 1);
     };
     init();
   });

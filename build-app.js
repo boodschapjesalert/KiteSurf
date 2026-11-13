@@ -36,6 +36,12 @@ const LOGICA_EXPORTS = [
   'oordeelSleutel',
   'bruikbaarBewaardOordeel',
   'isOordeelVers',
+  'ONBOARDING_WIND_PRESETS',
+  'ONBOARDING_VLAAG_PRESETS',
+  'maakOnboardingConcept',
+  'berekenVlaagVoorbeeldKnopen',
+  'valideerOnboardingStap',
+  'pasOnboardingConceptToeOpProfiel',
 ];
 
 function leesZonderBom(bestand) {
