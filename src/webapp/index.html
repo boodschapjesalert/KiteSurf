@@ -100,9 +100,21 @@
       <section id="weerSectie" hidden>
         <div class="weer-header">
           <h2 id="huidigeLocatieNaam"></h2>
+          <button id="windrichtingLocatieKnop" class="icoonknop" title="Windrichting van deze spot aanpassen">🧭</button>
           <button id="verwijderLocatieKnop" class="icoonknop" title="Verwijder uit favorieten">🗑️</button>
         </div>
+        <div id="windrichtingSamenvatting" class="uitleg"></div>
         <div id="dagKaarten" class="dagkaarten"></div>
+      </section>
+
+      <section id="windrichtingSectie" hidden>
+        <h2 id="windrichtingTitel">Windrichting</h2>
+        <div id="windrichtingEditor"></div>
+        <div id="windrichtingMelding" class="fout" hidden></div>
+        <div class="knoppenrij">
+          <button id="windrichtingOpslaanKnop">Opslaan</button>
+          <button id="windrichtingAnnuleerKnop" class="secundair">Annuleren</button>
+        </div>
       </section>
 
       <section id="instellingenSectie" hidden>

@@ -4,6 +4,7 @@
 
 const { standaardDrempelwaarden } = require('./drempelwaarden');
 const { GEWICHTEN, ALLE_SCORE_CRITERIA } = require('./scoreBerekening');
+const { valideerWindrichtingWeergave, STANDAARD_WINDRICHTING_WEERGAVE } = require('./windrichtingKeuze');
 
 // Bovengrens voor een handmatig ingevuld score-gewicht: dit zijn vrije relatieve factoren (geen
 // percentages die op 1 moeten optellen — zie normaliseerGewichten in scoreBerekening.js), maar een
@@ -89,6 +90,8 @@ function standaardProfiel(gebruikerId) {
     // kopie zodat elk profiel zijn eigen instelbare set heeft. Default = exact de ingebouwde
     // berekening; een gebruiker die niets aanpast, merkt dus niets van deze instelling.
     scoreGewichten: { ...GEWICHTEN },
+    // Hoe een windrichting getoond wordt: 'kompas' (ZW) of 'graden' (225 graden) - nooit beide. Zie windrichtingKeuze.js.
+    windrichtingWeergave: STANDAARD_WINDRICHTING_WEERGAVE,
     favorieteLocaties: standaardFavorieteLocaties(),
     // Twee onafhankelijke, los te combineren Telegram-meldingsvormen (zie Meldingen.gs), allebei
     // gebaseerd op dezelfde score/kleur-berekening hierboven (scoreGewichten) — geen aparte
@@ -263,6 +266,7 @@ function valideerEnVulProfielAan(ruwProfiel, gebruikerId) {
   const minimaleSessieUren = valideerMinimaleSessieUren(ruwProfiel?.minimaleSessieUren, basis.minimaleSessieUren);
   const scoreGewichten = valideerScoreGewichten(ruwProfiel?.scoreGewichten, basis.scoreGewichten);
   const telegramChatId = ruwProfiel?.telegramChatId != null ? ruwProfiel.telegramChatId : null;
+  const windrichtingWeergave = valideerWindrichtingWeergave(ruwProfiel?.windrichtingWeergave, basis.windrichtingWeergave);
 
   // Favoriete locaties: alleen aanvullen met de standaard-favorieten als het veld helemaal
   // ontbreekt (nieuw profiel) — een gebruiker die ze bewust verwijderd heeft, moet dat zo houden.
@@ -294,6 +298,7 @@ function valideerEnVulProfielAan(ruwProfiel, gebruikerId) {
       dagenVooruit,
       minimaleSessieUren,
       scoreGewichten,
+      windrichtingWeergave,
       favorieteLocaties,
       meldingen,
     },
@@ -322,8 +327,27 @@ function verwijderFavorieteLocatie(profiel, locatieId) {
   };
 }
 
+/**
+ * Werkt alleen de windrichting van een favoriete spot bij (bewerk-scherm per spot). Valideert via
+ * valideerLocatie; bij een fout of onbekende spot blijft het profiel ongewijzigd.
+ */
+function updateFavorieteLocatieWindrichting(profiel, locatieId, ruweWindrichting) {
+  const huidige = (profiel.favorieteLocaties || []).find((l) => l.id === locatieId);
+  if (!huidige) return { profiel, fouten: ['Locatie niet gevonden'] };
+  const { locatie, fouten } = valideerLocatie({ ...huidige, windrichting: ruweWindrichting });
+  if (!locatie) return { profiel, fouten };
+  return {
+    profiel: {
+      ...profiel,
+      favorieteLocaties: profiel.favorieteLocaties.map((l) => (l.id === locatieId ? { ...l, windrichting: locatie.windrichting } : l)),
+    },
+    fouten: [],
+  };
+}
+
 module.exports = {
   standaardProfiel,
+  updateFavorieteLocatieWindrichting,
   standaardFavorieteLocaties,
   standaardDatabronnen,
   vulAanMetDefaults,

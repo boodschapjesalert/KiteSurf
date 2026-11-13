@@ -11,7 +11,7 @@
 // Handmatig ophogen bij elke betekenisvolle wijziging/deploy — zichtbaar onderin de app, zodat
 // eenvoudig te controleren is of een nieuwe versie daadwerkelijk live staat (i.p.v. een gecachete
 // oudere versie in de browser).
-var KITEWEER_VERSIE = 'v101 (13 nov 2026)';
+var KITEWEER_VERSIE = 'v102 (13 nov 2026)';
 
 /**
  * Verkort een URL via TinyURL's geauthenticeerde API (eigen account + API-token in Script
@@ -247,7 +247,7 @@ function bouwWidgetData_(profiel, locatie, grafiekVoorGebruikerId) {
       return dagScore.besteUur ? dagScore.besteUur.ruw : null;
     }
     function kompasVan(ruw) {
-      return ruw && ruw.windrichtingGraden != null ? windrichtingKompas(ruw.windrichtingGraden) : null;
+      return ruw && ruw.windrichtingGraden != null ? formatWindrichting(ruw.windrichtingGraden, profiel.windrichtingWeergave) : null;
     }
 
     // Niet meer alleen vandaag: de "volgende kans" hieronder moet ook een dag verderop kunnen
@@ -330,6 +330,7 @@ function bouwWidgetData_(profiel, locatie, grafiekVoorGebruikerId) {
           startUur: GRAFIEK_START_UUR_,
           eindUur: GRAFIEK_EIND_UUR_,
           zonsondergang: zonDag.zonsondergang,
+          windrichtingWeergave: profiel.windrichtingWeergave,
         });
       }),
     };
@@ -448,6 +449,19 @@ function voegFavorieteLocatieToeServer(gebruikerId, ruweLocatie) {
     if (!opgeslagen) return { fout: 'Kon niet opslaan (probeer het nog eens)' };
     resultaat.profiel = opgeslagen;
     return resultaat;
+  });
+}
+
+function updateFavorieteLocatieWindrichtingServer(gebruikerId, locatieId, windrichting) {
+  return metGebruiker_(gebruikerId, function (id) {
+    var fouten = [];
+    var opgeslagen = wijzigProfielMetLock_(id, function (profiel) {
+      var resultaat = updateFavorieteLocatieWindrichting(profiel, locatieId, windrichting);
+      fouten = resultaat.fouten || [];
+      return resultaat.profiel;
+    });
+    if (!opgeslagen) return { fout: 'Kon niet opslaan (probeer het nog eens)' };
+    return { profiel: opgeslagen, fouten: fouten };
   });
 }
 

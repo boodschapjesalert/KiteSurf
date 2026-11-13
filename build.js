@@ -62,12 +62,37 @@ function bouwOnboardingWizardScript() {
   );
 }
 
+/**
+ * Client-kant windrichting-logica voor de GAS-webapp (die heeft geen toegang tot src/logica/):
+ * dezelfde modules als de server gebruikt, zodat kompas/graden-conversie en spot-presets op
+ * precies één plek leven. In de Android-app staan ze al in window.KiteweerLogica (build-app.js).
+ */
+function bouwWindrichtingScript() {
+  const bestanden = ['eenheden.js', 'drempelwaarden.js', 'windrichtingKeuze.js', 'spotPresets.js'];
+  const delen = bestanden.map((f) => ontdoeVanNodeModuleSyntax(fs.readFileSync(path.join(SRC_LOGICA, f), 'utf8').replace(/^\uFEFF/, '')));
+  return (
+    'window.KiteweerWindrichtingLogica = (function () {\n' +
+    delen.join('\n') +
+    '\nreturn {\n' +
+    '  formatWindrichting: formatWindrichting,\n' +
+    '  formatRanges: formatRanges,\n' +
+    '  formatWindrichtingSamenvatting: formatWindrichtingSamenvatting,\n' +
+    '  windrichtingNaarSectorStanden: windrichtingNaarSectorStanden,\n' +
+    '  sectorStandenNaarWindrichting: sectorStandenNaarWindrichting,\n' +
+    '  zoekSpotPreset: zoekSpotPreset,\n' +
+    '  SPOT_PRESETS: SPOT_PRESETS,\n' +
+    '};\n})();'
+  );
+}
+
 function kopieerWebapp() {
   fs.readdirSync(SRC_WEBAPP).forEach((bestand) => {
     const bron = path.join(SRC_WEBAPP, bestand);
     const doel = path.join(DIST, bestand);
     if (bestand === 'JavaScript.html') {
-      const inhoud = fs.readFileSync(bron, 'utf8').replace('// __ONBOARDING_WIZARD_LOGICA__', bouwOnboardingWizardScript());
+      const inhoud = fs.readFileSync(bron, 'utf8')
+        .replace('// __ONBOARDING_WIZARD_LOGICA__', () => bouwOnboardingWizardScript())
+        .replace('// __WINDRICHTING_LOGICA__', () => bouwWindrichtingScript());
       fs.writeFileSync(doel, inhoud);
     } else {
       fs.copyFileSync(bron, doel);

@@ -391,4 +391,22 @@
     0% { background-position: 100% 50%; }
     100% { background-position: 0 50%; }
   }
+
+  /* Windrichting-editor: 16 kompasvakjes (tik = Niet -> Beste -> Matig) of graden-bereiken. */
+  .wr-uitleg { font-size: 13px; color: var(--hint); line-height: 1.5; margin: 0 0 10px; }
+  .wr-legenda { display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px; color: var(--hint); margin: 8px 0; }
+  .wr-legenda span::before { content: ''; display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: middle; background: var(--sectie-bg); border: 1px solid var(--hint); }
+  .wr-legenda .l-beste::before { background: var(--groen); border-color: var(--groen); }
+  .wr-legenda .l-matig::before { background: var(--oranje); border-color: var(--oranje); }
+  .wr-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 8px 0; }
+  .wr-chip { padding: 12px 0; border-radius: 10px; border: 2px solid var(--hint); background: var(--sectie-bg); color: var(--tekst); font-weight: 600; font-size: 14px; cursor: pointer; text-align: center; }
+  .wr-chip.stand-1 { background: var(--groen); border-color: var(--groen); color: #fff; }
+  .wr-chip.stand-2 { background: var(--oranje); border-color: var(--oranje); color: #fff; }
+  .wr-samenvatting { font-size: 13px; padding: 8px 10px; border-radius: 8px; background: var(--sectie-bg); margin: 8px 0; }
+  .wr-modus { background: none; border: none; color: var(--knop-bg); padding: 4px 0; font-size: 13px; text-decoration: underline; cursor: pointer; }
+  .wr-bereik { display: flex; align-items: center; gap: 6px; margin: 6px 0; font-size: 14px; }
+  .wr-bereik input { width: 80px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--hint); background: var(--bg); color: var(--tekst); }
+  .wr-preset { margin: 6px 0 10px; }
+  .wr-spotrij { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; border-bottom: 1px solid rgba(128, 128, 128, 0.25); font-size: 14px; }
+  .wr-spotrij small { display: block; color: var(--hint); font-size: 12px; }
 </style>

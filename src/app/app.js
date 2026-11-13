@@ -250,6 +250,13 @@
         });
       });
     },
+    updateFavorieteLocatieWindrichtingServer: function (gebruikerId, locatieId, windrichting) {
+      return laadProfiel().then(function (profiel) {
+        var resultaat = logica.updateFavorieteLocatieWindrichting(profiel, locatieId, windrichting);
+        if (resultaat.fouten && resultaat.fouten.length) return resultaat;
+        return bewaarProfiel(resultaat.profiel).then(function (nieuw) { return { profiel: nieuw, fouten: [] }; });
+      });
+    },
     getWeerOordeel: function (gebruikerId, locatie) {
       return laadProfiel().then(function (profiel) { return haalOp(profiel, locatie); });
     },

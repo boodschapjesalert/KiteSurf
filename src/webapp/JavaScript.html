@@ -387,35 +387,36 @@
   }
 
   function toonToevoegFormulier(zoekResultaat) {
-    var bestaandeVanRange = prompt(
-      'Cross-shore windrichting voor "' + zoekResultaat.naam + '"\n' +
-      'Beste richting VAN (graden, 0-360):', '200'
-    );
-    if (bestaandeVanRange === null) return;
-    var besteTot = prompt('Beste richting TOT (graden):', '260');
-    if (besteTot === null) return;
-
-    var nieuweLocatie = {
-      naam: zoekResultaat.naam,
-      lat: zoekResultaat.lat,
-      lon: zoekResultaat.lon,
-      windrichting: {
-        besteRanges: [[Number(bestaandeVanRange), Number(besteTot)]],
-        acceptabeleRanges: [],
+    // Bekende spot? Dan staan de voorgestelde richtingen alvast ingevuld (richtlijn, aanpasbaar).
+    var presetMatch = windrichtingLogica.zoekSpotPreset(zoekResultaat.lat, zoekResultaat.lon);
+    openWindrichtingEditor({
+      titel: 'Windrichting voor ' + zoekResultaat.naam,
+      ondertitel: presetMatch
+        ? 'Bekende spot (' + presetMatch.preset.naam + '): de voorgestelde richtingen staan al ingevuld. Controleer ze en pas ze aan waar nodig.'
+        : 'Bij welke windrichtingen is deze spot geschikt?',
+      windrichting: presetMatch ? presetMatch.windrichting : { besteRanges: [], acceptabeleRanges: [] },
+      preset: presetMatch,
+      onOpslaan: function (windrichting, klaar) {
+        var nieuweLocatie = {
+          naam: zoekResultaat.naam,
+          lat: zoekResultaat.lat,
+          lon: zoekResultaat.lon,
+          windrichting: windrichting,
+        };
+        toonLaad(true);
+        run('voegFavorieteLocatieToeServer', gebruikerId, nieuweLocatie)
+          .then(function (r) {
+            toonLaad(false);
+            profiel = r.profiel;
+            renderFavorieten();
+            document.getElementById('zoekResultaten').innerHTML = '';
+            document.getElementById('zoekInput').value = '';
+            if (r.fouten && r.fouten.length) { klaar(r.fouten.join(', ')); return; }
+            klaar(null);
+          })
+          .catch(function (e) { toonLaad(false); klaar(String(e.message || e)); });
       },
-    };
-
-    toonLaad(true);
-    run('voegFavorieteLocatieToeServer', gebruikerId, nieuweLocatie)
-      .then(function (r) {
-        profiel = r.profiel;
-        renderFavorieten();
-        document.getElementById('zoekResultaten').innerHTML = '';
-        document.getElementById('zoekInput').value = '';
-        toonLaad(false);
-        if (r.fouten && r.fouten.length) toonFout(r.fouten.join(', '));
-      })
-      .catch(function (e) { toonLaad(false); toonFout(String(e.message || e)); });
+    });
   }
 
   function verwijderHuidigeLocatie() {
@@ -437,6 +438,7 @@
     stopRadarAnimatie();
     huidigeLocatie = locatie;
     document.getElementById('huidigeLocatieNaam').textContent = locatie.naam;
+    werkWindrichtingSamenvattingBij();
     renderFavorieten();
     toon('weerSectie');
     toonFout(null);
@@ -553,6 +555,22 @@
     return KOMPAS_PUNTEN[Math.round(g / 22.5) % 16];
   }
 
+  // Windrichting-logica (kompas/graden-conversie, spot-presets): in de GAS-webapp ingevoegd door
+  // build.js, in de Android-app zit het al in window.KiteweerLogica.
+  // __WINDRICHTING_LOGICA__
+  var windrichtingLogica = window.KiteweerWindrichtingLogica || window.KiteweerLogica;
+
+  /** De voorkeur van de gebruiker: 'kompas' (ZW) of 'graden' (225°) — nooit beide tegelijk. */
+  function windrichtingWeergaveVoorkeur() {
+    return (profiel && profiel.windrichtingWeergave === 'graden') ? 'graden' : 'kompas';
+  }
+
+  /** Eén windrichting als tekst volgens de voorkeur van de gebruiker (of null als onbekend). */
+  function toonWindrichting(graden) {
+    if (graden == null) return null;
+    return windrichtingLogica.formatWindrichting(graden, windrichtingWeergaveVoorkeur());
+  }
+
   /**
    * Directe visuele weergave van de wind (los van de go/no-go-interpretatie): een pijl die
    * wijst in de richting waar de wind heen waait (dus 180° gedraaid t.o.v. de "komt uit"-graden),
@@ -569,11 +587,11 @@
       return '<span class="windbadge windbadge-onbekend">–</span>';
     }
     var kn = Math.round(ruw.windKnopen);
-    var kompas = windrichtingKompas(ruw.windrichtingGraden);
+    var kompas = toonWindrichting(ruw.windrichtingGraden);
     var eenheidTekst = toonEenheid !== false ? ' kn' : '';
     var vlaagTekst = (toonVlag !== false && ruw.windvlaagKnopen != null) ? ' (vlagen ' + Math.round(ruw.windvlaagKnopen) + ' kn)' : '';
     var titel = 'Wind: ' + kn + ' kn' +
-      (kompas != null ? ' uit ' + kompas + ' (' + Math.round(ruw.windrichtingGraden) + '°)' : '') +
+      (kompas != null ? ' uit ' + kompas : '') +
       (ruw.windvlaagKnopen != null ? ', vlagen ' + Math.round(ruw.windvlaagKnopen) + ' kn' : '');
     var pijlHtml = '';
     if (ruw.windrichtingGraden != null) {
@@ -1526,7 +1544,7 @@
       balk.style.height = (wind != null ? Math.max(2, (wind / maxKn) * 100) : 2) + '%';
       var windTekst = '';
       if (wind != null) {
-        var kompas = windrichtingKompas(u.ruw.windrichtingGraden);
+        var kompas = toonWindrichting(u.ruw.windrichtingGraden);
         windTekst = ', wind ' + Math.round(wind) + ' kn' + (kompas != null ? ' uit ' + kompas : '') +
           (u.ruw.windvlaagKnopen != null ? ', vlagen ' + Math.round(u.ruw.windvlaagKnopen) + ' kn' : '');
       }
@@ -1959,9 +1977,33 @@
       var favorieten = profiel.favorieteLocaties || [];
       var eersteNaam = favorieten[0] ? favorieten[0].naam : 'je eerste favoriet';
       voegWizardUitlegToe(inhoud, 'Windrichting is per spot verschillend (aanlandig vs. aflandig) en hoort daarom bij elke favoriet apart.', [
-        { label: 'In de app', tekst: 'Met de zoekbalk bovenin voeg je eigen spots toe en geef je per spot de veilige cross-shore windrichting (0–360°) op.' },
+        { label: 'Windrichting', tekst: 'Per spot kies je met vakjes (Z, ZZW, ZW, …) bij welke windrichtingen je wilt kiten. Aflandige wind (van land naar zee) is onveilig — laat die uit. Bekende spots krijgen een voorstel dat je kunt aanpassen. Liever graden? Kies dat hieronder.' },
+        { label: 'In de app', tekst: 'Met de zoekbalk bovenin voeg je eigen spots toe; je kiest direct de windrichtingen van die spot.' },
         { label: 'Op de widget', tekst: 'De startscherm-widget volgt automatisch je 1e favoriet (' + eersteNaam + ') en toont vandaag, huidige wind, eerstvolgende goede moment en daggrafiek.' },
       ]);
+
+      var weergaveRij = document.createElement('div');
+      weergaveRij.className = 'veldrij';
+      var weergaveLabel = document.createElement('label');
+      weergaveLabel.textContent = 'Windrichting tonen als';
+      weergaveLabel.htmlFor = 'wiz-windrichtingweergave';
+      var weergaveSelect = document.createElement('select');
+      weergaveSelect.id = 'wiz-windrichtingweergave';
+      weergaveSelect.style.width = '160px';
+      [['kompas', 'Kompas (bv. ZW)'], ['graden', 'Graden (bv. 225°)']].forEach(function (o) {
+        var opt = document.createElement('option');
+        opt.value = o[0];
+        opt.textContent = o[1];
+        weergaveSelect.appendChild(opt);
+      });
+      weergaveSelect.value = windrichtingWeergaveVoorkeur();
+      weergaveSelect.onchange = function () {
+        profiel.windrichtingWeergave = weergaveSelect.value === 'graden' ? 'graden' : 'kompas';
+        renderWizardStap();
+      };
+      weergaveRij.appendChild(weergaveLabel);
+      weergaveRij.appendChild(weergaveSelect);
+      inhoud.appendChild(weergaveRij);
 
       var spotLijst = document.createElement('div');
       spotLijst.className = 'wizard-spotlijst';
@@ -1971,6 +2013,16 @@
         var naamSpan = document.createElement('span');
         naamSpan.textContent = (idx + 1) + '. ' + loc.naam;
         item.appendChild(naamSpan);
+        var windrichtingSpan = document.createElement('small');
+        windrichtingSpan.style.display = 'block';
+        windrichtingSpan.textContent = '🧭 ' + windrichtingLogica.formatWindrichtingSamenvatting(loc.windrichting, windrichtingWeergaveVoorkeur());
+        naamSpan.appendChild(windrichtingSpan);
+        var windrichtingKnop = document.createElement('button');
+        windrichtingKnop.type = 'button';
+        windrichtingKnop.className = 'klein secundair';
+        windrichtingKnop.textContent = 'Aanpassen';
+        windrichtingKnop.onclick = function () { bewerkWindrichtingVanSpot(loc, renderWizardStap); };
+        item.appendChild(windrichtingKnop);
         if (idx === 0) {
           var spotBadge = document.createElement('span');
           spotBadge.className = 'wizard-spotbadge';
@@ -2080,6 +2132,245 @@
     });
   }
 
+  // --- Windrichting-editor (per spot): kompasvakjes of graden ---
+  //
+  // Eén herbruikbaar component voor drie plekken: een nieuwe spot toevoegen, een bestaande spot
+  // aanpassen (🧭 bij de spot, en onder ⚙️ Instellingen / in de Instelhulp). De opslag blijft
+  // altijd graden-ranges (zie windrichtingKeuze.js); kompas/graden is alleen de invoer/weergave.
+
+  var windrichtingHuidig = null;
+  var windrichtingTerugTeZetten = [];
+
+  function wrEl(tag, klasse, tekst) {
+    var el = document.createElement(tag);
+    if (klasse) el.className = klasse;
+    if (tekst != null) el.textContent = tekst;
+    return el;
+  }
+
+  function wrKopieerRanges(ranges) {
+    return (ranges || []).map(function (r) { return [r[0], r[1]]; });
+  }
+
+  function bouwWindrichtingEditor(opties) {
+    var wrapper = wrEl('div');
+    var origineel = opties.windrichting || { besteRanges: [], acceptabeleRanges: [] };
+    var modus = opties.modus === 'graden' ? 'graden' : 'kompas';
+    var standen = windrichtingLogica.windrichtingNaarSectorStanden(origineel);
+    var bereiken = { beste: wrKopieerRanges(origineel.besteRanges), matig: wrKopieerRanges(origineel.acceptabeleRanges) };
+    var gewijzigd = false;
+    var samenvattingEl = null;
+
+    // Huidige keuze als `windrichting` (of { fout }). Onaangeraakt blijft de opgeslagen waarde exact
+    // behouden (kompasvakjes zijn een afronding op 22,5°-sectoren).
+    function lees() {
+      if (!gewijzigd) return { windrichting: { besteRanges: wrKopieerRanges(origineel.besteRanges), acceptabeleRanges: wrKopieerRanges(origineel.acceptabeleRanges) } };
+      if (modus === 'kompas') return { windrichting: windrichtingLogica.sectorStandenNaarWindrichting(standen) };
+      var uit = { besteRanges: [], acceptabeleRanges: [] };
+      var fout = null;
+      [['beste', 'besteRanges'], ['matig', 'acceptabeleRanges']].forEach(function (p) {
+        bereiken[p[0]].forEach(function (r) {
+          var van = Number(r[0]);
+          var tot = Number(r[1]);
+          if (r[0] === '' || r[1] === '' || !isFinite(van) || !isFinite(tot)) {
+            fout = 'Vul bij elk bereik een geldige "van" en "tot" in (0–360°).';
+            return;
+          }
+          uit[p[1]].push([van, tot]);
+        });
+      });
+      return fout ? { fout: fout } : { windrichting: uit };
+    }
+
+    function werkSamenvattingBij() {
+      if (!samenvattingEl) return;
+      var r = lees();
+      samenvattingEl.textContent = r.fout ? r.fout : '🧭 ' + windrichtingLogica.formatWindrichtingSamenvatting(r.windrichting, modus);
+    }
+
+    function laadUit(windrichting) {
+      standen = windrichtingLogica.windrichtingNaarSectorStanden(windrichting);
+      bereiken = { beste: wrKopieerRanges(windrichting.besteRanges), matig: wrKopieerRanges(windrichting.acceptabeleRanges) };
+    }
+
+    function bouwBereikRijen(type, titel) {
+      var blok = wrEl('div');
+      blok.appendChild(wrEl('strong', null, titel));
+      bereiken[type].forEach(function (r, i) {
+        var rij = wrEl('div', 'wr-bereik');
+        var van = wrEl('input');
+        van.type = 'number'; van.min = '0'; van.max = '360'; van.step = '1'; van.value = r[0];
+        van.oninput = function () { r[0] = van.value; gewijzigd = true; werkSamenvattingBij(); };
+        var tot = wrEl('input');
+        tot.type = 'number'; tot.min = '0'; tot.max = '360'; tot.step = '1'; tot.value = r[1];
+        tot.oninput = function () { r[1] = tot.value; gewijzigd = true; werkSamenvattingBij(); };
+        var weg = wrEl('button', 'klein secundair', '✕');
+        weg.type = 'button';
+        weg.onclick = function () { bereiken[type].splice(i, 1); gewijzigd = true; render(); };
+        rij.appendChild(wrEl('span', null, 'van'));
+        rij.appendChild(van);
+        rij.appendChild(wrEl('span', null, 'tot'));
+        rij.appendChild(tot);
+        rij.appendChild(wrEl('span', null, '°'));
+        rij.appendChild(weg);
+        blok.appendChild(rij);
+      });
+      var plus = wrEl('button', 'klein secundair', '+ bereik');
+      plus.type = 'button';
+      plus.onclick = function () { bereiken[type].push(['', '']); render(); };
+      blok.appendChild(plus);
+      return blok;
+    }
+
+    function render() {
+      wrapper.innerHTML = '';
+      if (opties.ondertitel) wrapper.appendChild(wrEl('p', 'wr-uitleg', opties.ondertitel));
+      wrapper.appendChild(wrEl('p', 'wr-uitleg',
+        'Kies de windrichtingen waarbij je op deze spot wilt kiten: wind vanaf het water of schuin aanlandig. ' +
+        'Een richting die je niet kiest geeft altijd een rood oordeel — laat aflandige wind (van land naar zee) dus uit. ' +
+        'Elke spot is anders: aan zee is oost vaak aflandig, aan het IJsselmeer kan oost juist prima zijn.'));
+
+      if (opties.preset) {
+        var presetKnop = wrEl('button', 'klein secundair wr-preset', '📍 Voorgestelde richtingen voor ' + opties.preset.preset.naam + ' invullen');
+        presetKnop.type = 'button';
+        presetKnop.onclick = function () { laadUit(opties.preset.windrichting); gewijzigd = true; render(); };
+        wrapper.appendChild(presetKnop);
+        wrapper.appendChild(wrEl('p', 'wr-uitleg', 'Een richtlijn op basis van de ligging van de kust — controleer ter plekke of bij de kitesurfvereniging en pas aan waar nodig.'));
+      }
+
+      if (modus === 'kompas') {
+        wrapper.appendChild(wrEl('p', 'wr-uitleg', 'Tik op een richting om te wisselen: niet geschikt → beste → matig.'));
+        var grid = wrEl('div', 'wr-grid');
+        KOMPAS_PUNTEN.forEach(function (naam, i) {
+          var chip = wrEl('button', 'wr-chip stand-' + standen[i], naam);
+          chip.type = 'button';
+          chip.onclick = function () {
+            standen[i] = (standen[i] + 1) % 3;
+            gewijzigd = true;
+            chip.className = 'wr-chip stand-' + standen[i];
+            werkSamenvattingBij();
+          };
+          grid.appendChild(chip);
+        });
+        wrapper.appendChild(grid);
+        var legenda = wrEl('div', 'wr-legenda');
+        legenda.appendChild(wrEl('span', 'l-uit', 'Niet geschikt'));
+        legenda.appendChild(wrEl('span', 'l-beste', 'Beste'));
+        legenda.appendChild(wrEl('span', 'l-matig', 'Matig'));
+        wrapper.appendChild(legenda);
+      } else {
+        wrapper.appendChild(wrEl('p', 'wr-uitleg', 'Geef de windrichting in graden (0–360°, 0 = noord, 90 = oost, 180 = zuid, 270 = west). Loopt een bereik over noord heen (bv. 340 tot 20), vul dat gewoon zo in.'));
+        wrapper.appendChild(bouwBereikRijen('beste', 'Beste richtingen'));
+        wrapper.appendChild(bouwBereikRijen('matig', 'Matige richtingen (optioneel)'));
+      }
+
+      samenvattingEl = wrEl('div', 'wr-samenvatting');
+      wrapper.appendChild(samenvattingEl);
+      werkSamenvattingBij();
+
+      var wissel = wrEl('button', 'wr-modus', modus === 'kompas' ? 'Liever graden invoeren' : 'Liever kompasvakjes gebruiken');
+      wissel.type = 'button';
+      wissel.onclick = function () {
+        var nu = lees();
+        if (nu.fout) { samenvattingEl.textContent = nu.fout; return; }
+        laadUit(nu.windrichting);
+        modus = modus === 'kompas' ? 'graden' : 'kompas';
+        render();
+      };
+      wrapper.appendChild(wissel);
+    }
+
+    render();
+    return { element: wrapper, lees: lees };
+  }
+
+  function toonWindrichtingMelding(tekst) {
+    var el = document.getElementById('windrichtingMelding');
+    el.textContent = tekst || '';
+    el.hidden = !tekst;
+  }
+
+  /**
+   * Opent het windrichting-scherm. opties: { titel, ondertitel, windrichting, preset,
+   * onOpslaan(windrichting, klaar(foutTekst|null)), naSluiten() }. De kaart/wizard/instellingen die
+   * open stonden worden tijdelijk verborgen en na sluiten hersteld.
+   */
+  function openWindrichtingEditor(opties) {
+    var container = document.getElementById('windrichtingEditor');
+    container.innerHTML = '';
+    document.getElementById('windrichtingTitel').textContent = opties.titel;
+    var editor = bouwWindrichtingEditor({
+      windrichting: opties.windrichting,
+      modus: windrichtingWeergaveVoorkeur(),
+      preset: opties.preset,
+      ondertitel: opties.ondertitel,
+    });
+    container.appendChild(editor.element);
+    toonWindrichtingMelding(null);
+    windrichtingHuidig = { editor: editor, opties: opties };
+    windrichtingTerugTeZetten = ['instellingenSectie', 'onboardingWizard'].filter(function (id) {
+      return !document.getElementById(id).hidden;
+    });
+    windrichtingTerugTeZetten.forEach(verberg);
+    toon('windrichtingSectie');
+    springNaar('windrichtingSectie');
+  }
+
+  function sluitWindrichtingEditor() {
+    verberg('windrichtingSectie');
+    var opties = windrichtingHuidig ? windrichtingHuidig.opties : null;
+    windrichtingHuidig = null;
+    windrichtingTerugTeZetten.forEach(toon);
+    windrichtingTerugTeZetten = [];
+    if (opties && opties.naSluiten) opties.naSluiten();
+  }
+
+  function windrichtingOpslaan() {
+    if (!windrichtingHuidig) return;
+    var r = windrichtingHuidig.editor.lees();
+    if (r.fout) { toonWindrichtingMelding(r.fout); return; }
+    if (r.windrichting.besteRanges.length === 0 && r.windrichting.acceptabeleRanges.length === 0) {
+      toonWindrichtingMelding('Kies minstens één windrichting waarbij je op deze spot wilt kiten.');
+      return;
+    }
+    windrichtingHuidig.opties.onOpslaan(r.windrichting, function (fout) {
+      if (fout) toonWindrichtingMelding(fout);
+      else sluitWindrichtingEditor();
+    });
+  }
+
+  /** Windrichting van een bestaande favoriete spot aanpassen (alle plekken waar dat kan). */
+  function bewerkWindrichtingVanSpot(locatie, naSluiten) {
+    openWindrichtingEditor({
+      titel: 'Windrichting — ' + locatie.naam,
+      windrichting: locatie.windrichting,
+      preset: windrichtingLogica.zoekSpotPreset(locatie.lat, locatie.lon),
+      onOpslaan: function (windrichting, klaar) {
+        toonLaad(true);
+        run('updateFavorieteLocatieWindrichtingServer', gebruikerId, locatie.id, windrichting)
+          .then(function (r) {
+            toonLaad(false);
+            if (r.fouten && r.fouten.length) { klaar(r.fouten.join(', ')); return; }
+            profiel = r.profiel;
+            if (huidigeLocatie && huidigeLocatie.id === locatie.id) {
+              huidigeLocatie = (profiel.favorieteLocaties || []).filter(function (l) { return l.id === locatie.id; })[0] || huidigeLocatie;
+            }
+            klaar(null);
+          })
+          .catch(function (e) { toonLaad(false); klaar(String(e.message || e)); });
+      },
+      naSluiten: naSluiten,
+    });
+  }
+
+  function werkWindrichtingSamenvattingBij() {
+    var el = document.getElementById('windrichtingSamenvatting');
+    if (!el) return;
+    el.textContent = huidigeLocatie
+      ? '🧭 Vaarbaar bij ' + windrichtingLogica.formatWindrichtingSamenvatting(huidigeLocatie.windrichting, windrichtingWeergaveVoorkeur()).replace('Beste: ', 'beste: ').replace(' · Matig: ', ' · matig: ')
+      : '';
+  }
+
   // --- Instellingen (drempelwaarden + meldingen) ---
 
   function openInstellingen() {
@@ -2109,9 +2400,80 @@
     }
   }
 
+  /**
+   * Keuze "windrichting tonen als kompas of graden" + de lijst favoriete spots met hun windrichting
+   * en een Aanpassen-knop per spot. Gedeeld door ⚙️ Instellingen en de Instelhulp (wizard stap 5).
+   */
+  function bouwWindrichtingKeuzeBlok(selectId, naSluiten) {
+    var blok = wrEl('div');
+    var rij = wrEl('div', 'veldrij');
+    var label = wrEl('label', null, 'Windrichting tonen als');
+    label.htmlFor = selectId;
+    var select = wrEl('select');
+    select.id = selectId;
+    select.style.width = '160px';
+    [['kompas', 'Kompas (bv. ZW)'], ['graden', 'Graden (bv. 225°)']].forEach(function (o) {
+      var opt = wrEl('option', null, o[1]);
+      opt.value = o[0];
+      select.appendChild(opt);
+    });
+    select.value = windrichtingWeergaveVoorkeur();
+    rij.appendChild(label);
+    rij.appendChild(select);
+    blok.appendChild(rij);
+
+    var lijst = wrEl('div');
+    function renderLijst() {
+      lijst.innerHTML = '';
+      (profiel.favorieteLocaties || []).forEach(function (loc) {
+        var spotRij = wrEl('div', 'wr-spotrij');
+        var tekstDeel = wrEl('div');
+        tekstDeel.appendChild(document.createTextNode(loc.naam));
+        tekstDeel.appendChild(wrEl('small', null, windrichtingLogica.formatWindrichtingSamenvatting(loc.windrichting, windrichtingWeergaveVoorkeur())));
+        var knop = wrEl('button', 'klein secundair', '🧭 Aanpassen');
+        knop.type = 'button';
+        knop.onclick = function () { bewerkWindrichtingVanSpot(loc, naSluiten); };
+        spotRij.appendChild(tekstDeel);
+        spotRij.appendChild(knop);
+        lijst.appendChild(spotRij);
+      });
+    }
+    select.onchange = function () {
+      profiel.windrichtingWeergave = select.value === 'graden' ? 'graden' : 'kompas';
+      renderLijst();
+    };
+    renderLijst();
+    blok.appendChild(lijst);
+    return blok;
+  }
+
   function renderInstellingenFormulier() {
     var container = document.getElementById('instellingenFormulier');
     container.innerHTML = '';
+
+    // Instelhulp: de stapsgewijze uitleg is niet alleen voor de eerste keer — hier altijd opnieuw te starten.
+    var instelhulpGroep = document.createElement('div');
+    instelhulpGroep.className = 'veldgroep';
+    instelhulpGroep.innerHTML =
+      '<h3>🧙 Instelhulp</h3>' +
+      '<p class="uitleg">Loop stap voor stap, met uitleg per onderdeel, opnieuw door alle instellingen. ' +
+      'Handig om iets bij te stellen of als je niet meer weet wat een instelling doet. Je huidige waarden staan alvast ingevuld.</p>';
+    var instelhulpKnop = document.createElement('button');
+    instelhulpKnop.className = 'klein';
+    instelhulpKnop.textContent = 'Instelhulp opnieuw doorlopen';
+    instelhulpKnop.onclick = openOnboardingWizard;
+    instelhulpGroep.appendChild(instelhulpKnop);
+    container.appendChild(instelhulpGroep);
+
+    var windrichtingGroep = document.createElement('div');
+    windrichtingGroep.className = 'veldgroep';
+    windrichtingGroep.innerHTML =
+      '<h3>🧭 Windrichting</h3>' +
+      '<p class="uitleg">Kies of windrichtingen als kompas (ZW) of in graden (225°) getoond en ingevoerd worden — ' +
+      'nooit allebei tegelijk. Per favoriete spot bepaal je zelf bij welke windrichtingen je wilt kiten ' +
+      '(aflandig = onveilig, en dat verschilt per spot).</p>';
+    windrichtingGroep.appendChild(bouwWindrichtingKeuzeBlok('veld-windrichtingweergave', renderInstellingenFormulier));
+    container.appendChild(windrichtingGroep);
 
     // Deel-link: een NIEUW, willekeurig gebruikers-ID (los van dat van deze gebruiker) in de URL,
     // zodat wie deze link opent een eigen, lege profiel krijgt i.p.v. per ongeluk mee te lezen/
@@ -2558,6 +2920,7 @@
     profiel.dagvenster.eindUur = Number(document.getElementById('veld-dagvenster-eind').value);
     profiel.dagenVooruit = Number(document.getElementById('veld-dagenvooruit').value);
     profiel.minimaleSessieUren = Number(document.getElementById('veld-minimalesessieuren').value);
+    profiel.windrichtingWeergave = document.getElementById('veld-windrichtingweergave').value === 'graden' ? 'graden' : 'kompas';
 
     // De tabel bepaalt nu zelf welke criteria meetellen (toevoegen/verwijderen, zie
     // herrenderScoreGewichtenTabel) — eerst de laatst getypte gewichten uit de zichtbare rijen
@@ -2655,6 +3018,14 @@
     document.getElementById('sluitBronnenKnop').onclick = function () { verberg('bronnenSectie'); };
     document.getElementById('opslaanBronnenKnop').onclick = opslaanBronnen;
     document.getElementById('verwijderLocatieKnop').onclick = verwijderHuidigeLocatie;
+    document.getElementById('windrichtingLocatieKnop').onclick = function () {
+      if (!huidigeLocatie) return;
+      bewerkWindrichtingVanSpot(huidigeLocatie, function () {
+        if (huidigeLocatie) kiesLocatie(huidigeLocatie);
+      });
+    };
+    document.getElementById('windrichtingOpslaanKnop').onclick = windrichtingOpslaan;
+    document.getElementById('windrichtingAnnuleerKnop').onclick = sluitWindrichtingEditor;
     document.getElementById('vergelijkKnop').onclick = openVergelijk;
     document.getElementById('sluitVergelijkKnop').onclick = function () { verberg('vergelijkSectie'); };
     document.getElementById('themaKnop').onclick = wisselThema;

@@ -3,8 +3,9 @@
 // wind) plus de uurreeks voor de grafiek van die dag. Geen GAS-afhankelijkheden; tijdstippen
 // zijn naive lokale ISO-strings (Europe/Amsterdam), dus new Date(...).getHours() volstaat.
 
-const { windrichtingKompas, uurVanIso, minutenVanIso, formatMinutenAlsTijd } = require('./eenheden');
+const { uurVanIso, minutenVanIso, formatMinutenAlsTijd } = require('./eenheden');
 const { formatDatumKort, INDICATIEF_VANAF_DAGINDEX } = require('./telegramFormat');
+const { formatWindrichting } = require('./windrichtingKeuze');
 
 const WIDGET_DAG_LABELS = ['Vandaag', 'Morgen', 'Overmorgen'];
 const WIDGET_VERDICT_PER_KLEUR = {
@@ -84,7 +85,7 @@ function bouwWidgetDag(dag, dagScore, dagIndex, grafiekVenster) {
     venster: venster,
     windKnopen: ruw ? widgetRond(ruw.windKnopen) : null,
     windvlaagKnopen: ruw ? widgetRond(ruw.windvlaagKnopen) : null,
-    windrichtingKompas: ruw && ruw.windrichtingGraden != null ? windrichtingKompas(ruw.windrichtingGraden) : null,
+    windrichtingKompas: ruw && ruw.windrichtingGraden != null ? formatWindrichting(ruw.windrichtingGraden, grafiekVenster && grafiekVenster.windrichtingWeergave) : null,
     uren: widgetUren(dagScore.uurResultaten, grafiekVenster.startUur, grafiekVenster.eindUur),
   };
 }

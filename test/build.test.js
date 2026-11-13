@@ -68,6 +68,8 @@ describe('build & bundel-integriteit', () => {
     const jsHtml = fs.readFileSync(path.join(ROOT, 'dist', 'JavaScript.html'), 'utf8');
     assert.equal(jsHtml.includes('// __ONBOARDING_WIZARD_LOGICA__'), false);
     assert.ok(jsHtml.includes('KiteweerOnboardingLogica'));
+    assert.equal(jsHtml.includes('// __WINDRICHTING_LOGICA__'), false);
+    assert.ok(jsHtml.includes('KiteweerWindrichtingLogica'));
     const scriptBody = jsHtml.replace(/^[\s\S]*?<script>/, '').replace(/<\/script>[\s\S]*$/, '');
     new vm.Script(scriptBody, { filename: 'dist/JavaScript.html' });
   });

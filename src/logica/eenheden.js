@@ -81,6 +81,7 @@ module.exports = {
   kmhNaarKnopen,
   afstandKm,
   dichtstbijzijnde,
+  KOMPAS_PUNTEN,
   windrichtingKompas,
   uurVanIso,
   minutenVanIso,
