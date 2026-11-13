@@ -323,3 +323,22 @@ describe('voegFavorieteLocatieToe / verwijderFavorieteLocatie', () => {
     assert.equal(zonder.favorieteLocaties.length, aantalVoor);
   });
 });
+
+describe('favorieteLocaties limiet (max 20)', () => {
+  const { valideerEnVulProfielAan, voegFavorieteLocatieToe } = require('../../src/logica/profielValidatie');
+
+  function maakLocatie(i) {
+    return { id: `spot-${i}`, naam: `Spot ${i}`, lat: 52.1, lon: 4.3, windrichting: 'W' };
+  }
+
+  test('kapt favorieteLocaties af op 20 en meldt fout bij extra locaties', () => {
+    const teVeel = Array.from({ length: 22 }, (_, i) => maakLocatie(i));
+    const { profiel, fouten } = valideerEnVulProfielAan({ favorieteLocaties: teVeel }, 'u1');
+    assert.equal(profiel.favorieteLocaties.length, 20);
+    assert.ok(fouten.some((f) => /Maximaal 20/i.test(f)));
+
+    const extra = voegFavorieteLocatieToe(profiel, maakLocatie(99));
+    assert.equal(extra.profiel.favorieteLocaties.length, 20);
+    assert.ok(extra.fouten.some((f) => /Maximaal 20/i.test(f)));
+  });
+});

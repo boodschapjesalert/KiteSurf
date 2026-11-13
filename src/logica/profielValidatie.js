@@ -126,6 +126,8 @@ function vulAanMetDefaults(waarden, defaults) {
   return resultaat;
 }
 
+const MAX_FAVORIETE_LOCATIES = 20;
+
 function valideerLocatie(ruweLocatie) {
   const fouten = [];
   const naam = typeof ruweLocatie?.naam === 'string' && ruweLocatie.naam.trim()
@@ -151,7 +153,8 @@ function valideerLocatie(ruweLocatie) {
 
   if (fouten.length > 0) return { locatie: null, fouten };
 
-  const id = ruweLocatie.id || `${lat.toFixed(4)},${lon.toFixed(4)}`;
+  const rawId = typeof ruweLocatie.id === 'string' && ruweLocatie.id.trim() ? ruweLocatie.id.trim().slice(0, 100) : '';
+  const id = rawId || `${lat.toFixed(4)},${lon.toFixed(4)}`;
   return {
     locatie: { id, naam, lat, lon, windrichting: { besteRanges, acceptabeleRanges } },
     fouten: [],
@@ -270,11 +273,14 @@ function valideerEnVulProfielAan(ruwProfiel, gebruikerId) {
       : [];
 
   const favorieteLocaties = [];
-  favorieteLocatiesRuw.forEach((ruw) => {
+  favorieteLocatiesRuw.slice(0, MAX_FAVORIETE_LOCATIES).forEach((ruw) => {
     const { locatie, fouten: locatieFouten } = valideerLocatie(ruw);
     if (locatie) favorieteLocaties.push(locatie);
     else fouten.push(...locatieFouten.map((f) => `Locatie "${ruw?.naam || '?'}": ${f}`));
   });
+  if (favorieteLocatiesRuw.length > MAX_FAVORIETE_LOCATIES) {
+    fouten.push(`Maximaal ${MAX_FAVORIETE_LOCATIES} favoriete locaties toegestaan`);
+  }
 
   const meldingen = valideerMeldingen(ruwProfiel?.meldingen, basis.meldingen);
 
@@ -296,6 +302,9 @@ function valideerEnVulProfielAan(ruwProfiel, gebruikerId) {
 }
 
 function voegFavorieteLocatieToe(profiel, ruweLocatie) {
+  if ((profiel.favorieteLocaties || []).length >= MAX_FAVORIETE_LOCATIES) {
+    return { profiel, fouten: [`Maximaal ${MAX_FAVORIETE_LOCATIES} favoriete locaties toegestaan`] };
+  }
   const { locatie, fouten } = valideerLocatie(ruweLocatie);
   if (!locatie) return { profiel, fouten };
   const bestaatAl = profiel.favorieteLocaties.some((l) => l.id === locatie.id);

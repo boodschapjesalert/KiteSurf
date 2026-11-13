@@ -45,6 +45,10 @@ final class KiteweerGrafiek {
      * @param breedteDp/hoogteDp gewenste weergavegrootte; de bitmap krijgt een passende dichtheid
      */
     static Bitmap tekenDag(Context context, JSONObject dag, boolean vandaag, int schaalMax, int breedteDp, int hoogteDp) {
+        return tekenDag(context, dag, vandaag, schaalMax, breedteDp, hoogteDp, -1f);
+    }
+
+    static Bitmap tekenDag(Context context, JSONObject dag, boolean vandaag, int schaalMax, int breedteDp, int hoogteDp, float uurNuOverride) {
         boolean donker = isDonker(context);
         DisplayMetrics metrics = context.getResources().getDisplayMetrics();
         float s = (float) Math.min(metrics.density, Math.sqrt(MAX_PIXELS / (double) (breedteDp * hoogteDp)));
@@ -179,8 +183,13 @@ final class KiteweerGrafiek {
         canvas.drawPath(vlaagLijn, lijn);
 
         if (vandaag) {
-            Calendar nu = Calendar.getInstance();
-            float uurNu = nu.get(Calendar.HOUR_OF_DAY) + nu.get(Calendar.MINUTE) / 60f;
+            float uurNu;
+            if (uurNuOverride >= 0f) {
+                uurNu = uurNuOverride;
+            } else {
+                Calendar nu = Calendar.getInstance();
+                uurNu = nu.get(Calendar.HOUR_OF_DAY) + nu.get(Calendar.MINUTE) / 60f;
+            }
             float x = plotLinks + (uurNu - eersteUur) * kolom;
             if (x >= plotLinks && x <= breedte) {
                 Paint streep = new Paint(Paint.ANTI_ALIAS_FLAG);

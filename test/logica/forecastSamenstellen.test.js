@@ -52,6 +52,16 @@ describe('samenstellenUrenData', () => {
     assert.equal(resultaat[1].uurData.windKnopen, 19);
   });
 
+  test('middelt windrichtingen rond Noord (355° en 5°) circulair naar ~0° i.p.v. 180°', () => {
+    const noordOpenMeteo = { ...openMeteo, windrichtingGraden: [355, 355, 355] };
+    const resultaat = samenstellenUrenData({
+      openMeteo: noordOpenMeteo,
+      buienradar: { windKnopen: 20, windrichtingGraden: 5, luchttemperatuurCelsius: 18, zichtKm: 10 },
+      huidigTijdstipIso: '2026-08-29T12:00',
+    });
+    assert.equal(Math.round(resultaat[0].uurData.windrichtingGraden), 0);
+  });
+
   test('watertemperatuur/golfhoogte komen uit de marine-reeks op hetzelfde tijdstip', () => {
     const resultaat = samenstellenUrenData({ openMeteo, openMeteoMarine });
     assert.equal(resultaat[0].uurData.watertemperatuurCelsius, 19);

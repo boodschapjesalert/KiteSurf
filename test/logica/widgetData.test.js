@@ -79,3 +79,28 @@ describe('bouwWidgetDag', () => {
     assert.equal(dag.venster, null);
   });
 });
+
+describe('widget zonsondergang cut-off (+30 min)', () => {
+  const { widgetUurLabel, bouwWidgetDag } = require('../../src/logica/widgetData');
+
+  test('widgetUurLabel kapt +1 einduur af op zonsondergang + 30 min', () => {
+    assert.equal(widgetUurLabel('2026-11-13T16:00', 1, '2026-11-13T16:20'), '16:50');
+    assert.equal(widgetUurLabel('2026-11-13T14:00', 1, '2026-11-13T16:20'), '15:00');
+  });
+
+  test('bouwWidgetDag past venster.tot aan op basis van dag.zonsondergang', () => {
+    const dag = bouwWidgetDag(
+      { datum: '2026-11-13', zonsondergang: '2026-11-13T16:20' },
+      {
+        kleur: 'groen',
+        score: 8.5,
+        besteUur: { ruw: { windKnopen: 20, windvlaagKnopen: 24, windrichtingGraden: 230 } },
+        besteVenster: { startTijdstip: '2026-11-13T14:00', eindTijdstip: '2026-11-13T16:00' },
+        uurResultaten: [],
+      },
+      0,
+      { startUur: 9, eindUur: 20 }
+    );
+    assert.deepEqual(dag.venster, { vanaf: '14:00', tot: '16:50' });
+  });
+});

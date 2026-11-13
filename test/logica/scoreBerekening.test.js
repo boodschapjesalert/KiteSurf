@@ -391,3 +391,65 @@ describe('berekenDagScore met minimale sessieduur', () => {
     assert.ok(r.score > 0);
   });
 });
+
+describe('berekenDagScore zonsondergang cut-off (+30 min)', () => {
+  const { berekenDagScore } = require('../../src/logica/scoreBerekening');
+  const goedeUurData = {
+    windKnopen: 20,
+    windvlaagKnopen: 22,
+    windrichtingGraden: 230,
+    onweerAanwezig: false,
+    neerslagKans: 0,
+    luchttemperatuurCelsius: 18,
+    watertemperatuurCelsius: 16,
+    golfhoogteMeter: 0.4,
+    zichtKm: 10,
+  };
+  const slechteUurData = { ...goedeUurData, windKnopen: 4, windvlaagKnopen: 5 };
+
+  test('sluit avonduren ná zonsondergang + 30 min uit van het bruikbare venster', () => {
+    const uren = [15, 16, 17, 18, 19].map((uur) => ({
+      tijdstip: `2026-11-13T${String(uur).padStart(2, '0')}:00`,
+      uurData: uur === 15 || uur === 16 ? goedeUurData : uur >= 17 ? goedeUurData : slechteUurData,
+    }));
+    const oordeel = berekenDagScore(uren, {}, {
+      dagvensterStartUur: 9,
+      dagvensterEindUur: 20,
+      minimaleSessieUren: 2,
+      zonsondergang: '2026-11-13T16:45', // cutoff = 17:15 -> uur 17 (17:30) valt erbuiten
+    });
+    assert.notEqual(oordeel.kleur, 'rood');
+    assert.equal(oordeel.besteVenster.startTijdstip, '2026-11-13T15:00');
+    assert.equal(oordeel.besteVenster.eindTijdstip, '2026-11-13T16:00');
+  });
+
+  test('dag met alleen wind ná zonsondergang + 30 min krijgt geenSessieMogelijk', () => {
+    const uren = [17, 18, 19, 20].map((uur) => ({
+      tijdstip: `2026-11-13T${String(uur).padStart(2, '0')}:00`,
+      uurData: goedeUurData,
+    }));
+    const oordeel = berekenDagScore(uren, {}, {
+      dagvensterStartUur: 9,
+      dagvensterEindUur: 20,
+      minimaleSessieUren: 2,
+      zonsondergang: '2026-11-13T16:30', // cutoff = 17:00 -> uur 17 (17:30) valt al erbuiten
+    });
+    assert.equal(oordeel.kleur, 'rood');
+    assert.equal(oordeel.geenSessieMogelijk, true);
+    assert.equal(oordeel.besteVenster, null);
+  });
+
+  test('zonder zonsondergang verandert bestaand dagvenster-gedrag niet', () => {
+    const uren = [18, 19].map((uur) => ({
+      tijdstip: `2026-11-13T${uur}:00`,
+      uurData: goedeUurData,
+    }));
+    const oordeel = berekenDagScore(uren, {}, {
+      dagvensterStartUur: 9,
+      dagvensterEindUur: 20,
+      minimaleSessieUren: 2,
+    });
+    assert.notEqual(oordeel.kleur, 'rood');
+    assert.equal(oordeel.besteVenster.eindTijdstip, '2026-11-13T19:00');
+  });
+});

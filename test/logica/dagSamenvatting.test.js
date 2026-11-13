@@ -148,3 +148,36 @@ describe('bouwDagSamenvatting', () => {
     assert.match(bouwDagSamenvatting(null), /Geen weerdata/);
   });
 });
+
+describe('bouwDagSamenvatting zonsondergang cut-off (+30 min)', () => {
+  const { bouwDagSamenvatting } = require('../../src/logica/dagSamenvatting');
+
+  test('kapt eindtijd af op zonsondergang + 30 min en negeert regen/wind daarna', () => {
+    const dagScore = {
+      besteVenster: {
+        startTijdstip: '2026-11-13T14:00',
+        eindTijdstip: '2026-11-13T16:00',
+      },
+      urenInVenster: [
+        { tijdstip: '2026-11-13T14:00', ruw: { windKnopen: 20 } },
+        { tijdstip: '2026-11-13T15:00', ruw: { windKnopen: 20 } },
+        { tijdstip: '2026-11-13T16:00', ruw: { windKnopen: 20 } },
+      ],
+      uurResultaten: [
+        { tijdstip: '2026-11-13T14:00', ruw: { windKnopen: 20, neerslagMm: 0 } },
+        { tijdstip: '2026-11-13T15:00', ruw: { windKnopen: 20, neerslagMm: 0 } },
+        { tijdstip: '2026-11-13T16:00', ruw: { windKnopen: 20, neerslagMm: 0 } },
+        // Ná cutoff (16:50): mag noch als windtrend noch als regen genoemd worden
+        { tijdstip: '2026-11-13T18:00', ruw: { windKnopen: 5, neerslagMm: 4.5 } },
+      ],
+    };
+
+    const tekst = bouwDagSamenvatting(dagScore, {
+      dagvensterStartUur: 9,
+      dagvensterEindUur: 20,
+      zonsondergang: '2026-11-13T16:20',
+    });
+
+    assert.equal(tekst, 'Tussen 14:00 en 16:50 lijkt de wind goed (20 kn).');
+  });
+});

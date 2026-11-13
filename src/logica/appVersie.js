@@ -18,4 +18,20 @@ function isNieuwereAppVersie(beschikbaar, huidig) {
   return false;
 }
 
-module.exports = { parseAppVersie, isNieuwereAppVersie };
+/**
+ * Controleert of een update-download-URL van een vertrouwde host komt (bescherming tegen
+ * kwaadwillige doorverwijzingen mocht het manifest ooit manipuleerbaar zijn).
+ */
+function isToegestaneUpdateUrl(url) {
+  if (typeof url !== 'string') return false;
+  const s = url.trim();
+  return (
+    s.startsWith('https://github.com/boodschapjesalert/KiteSurf/') ||
+    s.startsWith('https://objects.githubusercontent.com/') ||
+    s.startsWith('https://release-assets.githubusercontent.com/') ||
+    s.startsWith('https://drive.google.com/') ||
+    s.startsWith('https://drive.usercontent.google.com/')
+  );
+}
+
+module.exports = { parseAppVersie, isNieuwereAppVersie, isToegestaneUpdateUrl };

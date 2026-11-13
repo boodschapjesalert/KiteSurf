@@ -70,6 +70,10 @@ public class KiteweerWidgetTekstTest {
         assertNull(KiteweerWidgetTekst.weekdag("gisteren"));
         assertEquals(13, KiteweerWidgetTekst.uurVan("13:00"));
         assertEquals(-1, KiteweerWidgetTekst.uurVan(""));
+        assertEquals(14.5f, KiteweerWidgetTekst.uurDecimalVan("14:30"), 0.001f);
+        assertEquals(0.25f, KiteweerWidgetTekst.uurDecimalVan("0:15"), 0.001f);
+        assertEquals(-1f, KiteweerWidgetTekst.uurDecimalVan("25:00"), 0.001f);
+        assertEquals(-1f, KiteweerWidgetTekst.uurDecimalVan(""), 0.001f);
     }
 
     @Test

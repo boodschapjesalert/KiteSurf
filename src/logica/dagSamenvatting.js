@@ -4,11 +4,13 @@
 // (trends, drempels, meervoudsvormen) die je wilt kunnen testen zonder browser, en zo kan ook
 // de Telegram-melding er later dezelfde zin uit halen.
 
+const { uurVanIso, minutenVanIso, formatMinutenAlsTijd } = require('./eenheden');
+
 /** Regen onder deze drempel is verwaarloosbaar (motregen) en wordt niet gemeld. */
 const REGEN_DREMPEL_MM = 0.2;
 
 function uurVan(tijdstip) {
-  return new Date(tijdstip).getHours();
+  return uurVanIso(tijdstip);
 }
 
 function formatUur(tijdstip) {
@@ -134,9 +136,12 @@ function bouwDagSamenvatting(dagScore, opties) {
 
   const startUur = (opties && opties.dagvensterStartUur) != null ? opties.dagvensterStartUur : 6;
   const eindUur = (opties && opties.dagvensterEindUur) != null ? opties.dagvensterEindUur : 21;
+  const zonOndergangMin = opties && opties.zonsondergang ? minutenVanIso(opties.zonsondergang) : null;
+  const cutoffMinuten = zonOndergangMin != null ? zonOndergangMin + 30 : null;
   const urenInDagvenster = dagScore.uurResultaten.filter((u) => {
     const uur = uurVan(u.tijdstip);
-    return uur >= startUur && uur <= eindUur;
+    if (uur < startUur || uur > eindUur) return false;
+    return cutoffMinuten == null || uur * 60 + 30 <= cutoffMinuten;
   });
   const regenZin = formatRegenZin(vatRegenSamen(urenInDagvenster));
 
@@ -169,10 +174,11 @@ function bouwDagSamenvatting(dagScore, opties) {
     : trend === 'toe' ? ', daarna trekt het verder aan'
     : '';
 
-  // Eindtijdstip is het láátste uur van het venster; de sessie loopt tot het eind van dat uur,
-  // dus +1 uur voor een natuurlijk leesbare periode ("09:00 en 12:00" bij uren 9, 10, 11).
-  const eindWeergave = (eindUurVenster + 1) % 24;
-  const eindTekst = (eindWeergave < 10 ? '0' + eindWeergave : String(eindWeergave)) + ':00';
+  // Eindtijdstip is het láátste uur van het venster; de sessie loopt tot het eind van dat uur
+  // (+1 uur), maar uiterlijk tot zonsondergang + 30 min ("09:00 en 12:00", of bv. "16:50").
+  let eindMinuten = (eindUurVenster + 1) * 60;
+  if (cutoffMinuten != null) eindMinuten = Math.min(eindMinuten, cutoffMinuten);
+  const eindTekst = formatMinutenAlsTijd(eindMinuten);
 
   return (
     'Tussen ' + formatUur(dagScore.besteVenster.startTijdstip) + ' en ' + eindTekst +

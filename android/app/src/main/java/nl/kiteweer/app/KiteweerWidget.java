@@ -167,7 +167,7 @@ public class KiteweerWidget extends AppWidgetProvider {
         } else {
             views.setViewVisibility(R.id.widget_overzicht, View.GONE);
             views.setViewVisibility(R.id.widget_dag, View.VISIBLE);
-            vulDag(context, views, dagen, pagina - 1, maten);
+            vulDag(context, views, data, dagen, pagina - 1, maten);
         }
 
         // Navigatie: ‹ verborgen op de eerste pagina; › op de laatste gaat terug naar het overzicht.
@@ -213,7 +213,7 @@ public class KiteweerWidget extends AppWidgetProvider {
         v.setViewVisibility(R.id.overzicht_dagen, aantal > 1 ? View.VISIBLE : View.GONE);
     }
 
-    private static void vulDag(Context context, RemoteViews v, JSONArray dagen, int index, int[] maten) {
+    private static void vulDag(Context context, RemoteViews v, JSONObject data, JSONArray dagen, int index, int[] maten) {
         JSONObject dag = dagen.optJSONObject(index);
         if (dag == null) dag = new JSONObject();
 
@@ -238,14 +238,18 @@ public class KiteweerWidget extends AppWidgetProvider {
         int inhoudHoogteDp = maten[1] - 16 - 22 - 32;
         int grafiekHoogteDp = Math.max(50, Math.min(180, inhoudHoogteDp - (compact ? 36 : 52)));
         int grafiekBreedteDp = Math.max(150, maten[0] - 40);
-        v.setImageViewBitmap(R.id.dag_grafiek, KiteweerGrafiek.tekenDag(context, dag, isVandaag(dag),
-                KiteweerWidgetTekst.schaalMax(dagen), grafiekBreedteDp, grafiekHoogteDp));
+        v.setImageViewBitmap(R.id.dag_grafiek, KiteweerGrafiek.tekenDag(context, dag, isVandaag(data, dag),
+                KiteweerWidgetTekst.schaalMax(dagen), grafiekBreedteDp, grafiekHoogteDp,
+                KiteweerWidgetTekst.uurDecimalVan(data.optString("bijgewerkt", ""))));
     }
 
-    /** Alleen vandaag krijgt de "nu"-lijn (niet de dag van gisteren uit verouderde gegevens). */
-    private static boolean isVandaag(JSONObject dag) {
-        Calendar nu = Calendar.getInstance();
-        String vandaag = String.format(Locale.ROOT, "%04d-%02d-%02d", nu.get(Calendar.YEAR), nu.get(Calendar.MONTH) + 1, nu.get(Calendar.DAY_OF_MONTH));
+    /** Alleen vandaag (in spot-tijdzone als de backend die meegaf) krijgt de "nu"-lijn. */
+    private static boolean isVandaag(JSONObject data, JSONObject dag) {
+        String vandaag = data.optString("spotDatum", "");
+        if (vandaag.isEmpty()) {
+            Calendar nu = Calendar.getInstance();
+            vandaag = String.format(Locale.ROOT, "%04d-%02d-%02d", nu.get(Calendar.YEAR), nu.get(Calendar.MONTH) + 1, nu.get(Calendar.DAY_OF_MONTH));
+        }
         return vandaag.equals(dag.optString("datum", null)) || (dag.isNull("datum") && "Vandaag".equals(dag.optString("dagLabel")));
     }
 

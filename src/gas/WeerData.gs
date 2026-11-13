@@ -558,7 +558,7 @@ function haalWeerDataOp_(lat, lon, databronnen, dagenVooruit) {
   var weerlive = r.weerlive ? parseWeerlive(r.weerlive) : null;
   var rwsGetij = r.rwsGetij ? parseRwsGetij(r.rwsGetij) : null;
   var rwsWindVerwachting = r.rwsWindshd ? parseRwsWindVerwachting(r.rwsWindshd, r.rwsWindrtg || {}) : null;
-  var rwsWindMeting = r.rwsWindshd ? parseRwsWindMeting(r.rwsWindshd, r.rwsWindrtg || {}) : null;
+  var rwsWindMeting = r.rwsWindshd ? parseRwsWindMeting(r.rwsWindshd, r.rwsWindrtg || {}, new Date().toISOString()) : null;
   // r.windfinder is door windfinderTaak_'s `verwerk` al het geparseerde object, geen JSON.parse meer nodig.
   var windfinder = r.windfinder || null;
   var knmi = r.knmi && knmiStation ? parseKnmiWaarnemingen(r.knmi, knmiStation.station, knmiStation.afstandKm) : null;

@@ -38,6 +38,13 @@ function getWidgetApkBestandsId_() {
   return PropertiesService.getScriptProperties().getProperty('WIDGET_APK_DRIVE_BESTANDS_ID') || '';
 }
 
+function getBeheerSleutel_() {
+  // Optioneel: als BEHEER_SLEUTEL in Script Properties gezet is, vereisen de beheer-/diagnose-
+  // endpoints (?actie=onderhoud, meldingen-status, laatste-lege-samenvatting, verificatie)
+  // `&sleutel=<BEHEER_SLEUTEL>`.
+  return PropertiesService.getScriptProperties().getProperty('BEHEER_SLEUTEL') || '';
+}
+
 function getProfielenMapId_() {
   var props = PropertiesService.getScriptProperties();
   var mapId = props.getProperty('PROFIELEN_MAP_ID');

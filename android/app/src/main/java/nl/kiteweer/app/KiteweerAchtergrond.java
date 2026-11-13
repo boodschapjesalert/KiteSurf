@@ -73,12 +73,12 @@ public class KiteweerAchtergrond extends Worker {
         return new Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build();
     }
 
-    /** Periodieke controle; KEEP zodat elke app-start het ritme niet opnieuw laat beginnen. */
+    /** Periodieke controle; UPDATE werkt bestaande planning/constraints bij zonder dubbele taken. */
     static void planPeriodiek(Context context) {
         PeriodicWorkRequest verzoek = new PeriodicWorkRequest.Builder(KiteweerAchtergrond.class, INTERVAL_MINUTEN, TimeUnit.MINUTES)
                 .setConstraints(metNetwerk())
                 .build();
-        WorkManager.getInstance(context).enqueueUniquePeriodicWork(WERK_PERIODIEK, ExistingPeriodicWorkPolicy.KEEP, verzoek);
+        WorkManager.getInstance(context).enqueueUniquePeriodicWork(WERK_PERIODIEK, ExistingPeriodicWorkPolicy.UPDATE, verzoek);
     }
 
     /** Meteen verversen (app geopend, profiel gewijzigd, widget geplaatst). */

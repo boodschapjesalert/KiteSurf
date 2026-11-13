@@ -45,6 +45,7 @@ In de Apps Script-editor: **Projectinstellingen → Script Properties → Add sc
 | `WIDGET_APK_DRIVE_BESTANDS_ID` | het Drive-bestands-ID van de geëxporteerde Tasker-widget-app | Nee | Toont de "⬇️ Download de widget-app (APK)"-knop bij ⚙️ Instellingen → 📱 Installeer ook de Widget; zonder deze property blijft die knop verborgen (de rest van de widget-functionaliteit, `?actie=widget`, werkt daar los van) |
 | `TINYURL_API_TOKEN` | API-token van je eigen (gratis) [tinyurl.com](https://tinyurl.com)-account → Account Settings → API Tokens | Nee | Verkort de "🔗 Deel deze app"-link, de Telegram-koppel-antwoorden en de "Bekijk de app"-regel in de dagelijkse samenvatting; zonder token blijven dit gewoon de lange URL's (zie README.md "Verkorte links" voor waarom dit de geauthenticeerde API is, niet de gratis sleutelloze) |
 | `KNMI_API_KEY` (of `KNMI_EDR_API_KEY`) | sleutel voor de **EDR API** van het [KNMI Data Platform](https://developer.dataplatform.knmi.nl) (gratis; per API een aparte sleutel aanvragen in de API Catalog) | Nee | Officiële 10-minutenmetingen (wind, vlagen, temperatuur, zicht) van het dichtstbijzijnde KNMI-station als extra bron voor het actuele uur; zonder sleutel wordt KNMI overgeslagen. Sleutel blijft server-side (KNMI-regel), bronvermelding CC BY 4.0 staat in de app. Dezelfde sleutel voedt de dagelijkse modeltoetsing (`?actie=verificatie`, zie README "Elfde vervolg"); geen extra instelling nodig |
+| `BEHEER_SLEUTEL` | zelfgekozen geheime sleutel | Nee | Beveiligt beheer-/diagnose-endpoints (`?actie=onderhoud`, `?actie=verificatie`, `?actie=meldingen-status`, `?actie=laatste-lege-samenvatting`); geef deze mee als `&sleutel=<BEHEER_SLEUTEL>` |
 
 Voor `WIDGET_APK_DRIVE_BESTANDS_ID`: upload de APK (zie README.md "Widget (Tasker)" voor hoe je
 'm via Tasker's App Factory exporteert) naar Drive, zet 'm op **"Iedereen met de link" → Viewer**
@@ -154,8 +155,10 @@ meer).
    | `KITEWEER_KEY_ALIAS` | `kiteweer` |
    | `KITEWEER_KEY_PASSWORD` | `keyPassword` uit `keystore.properties` |
 
-4. **Installeren:** download de APK (Actions → run → Artifacts, of een release), open hem op de
-   telefoon en sta installeren uit onbekende bronnen toe.
+4. **Installeren & veilig updates pushen:**
+   - **GitHub Releases (aanbevolen):** push een tag `v<versie>` (bijv. `v1.2.0`), waarna `.github/workflows/android-apk.yml` automatisch een ondertekende release-APK bouwt en als release-asset publiceert; gebruikers zien daarna bij het openen van de app automatisch een pop-up banner.
+   - **Of via Google Drive:** upload de ondertekende APK naar een aparte Drive-map en zet delen strikt op **"Iedereen met de link → Alleen lezen / Kijker (Viewer)"** (nóóit Editor/Bewerker, zodat derden je Drive niet kunnen aanpassen of een malafide bestand kunnen uploaden). Vul daarna `downloads/versie.json` met de directe Drive-downloadlink (`https://drive.google.com/uc?export=download&id=<BESTANDS_ID>`). De app accepteert uitsluitend vertrouwde GitHub/Drive-URL's (`isToegestaneUpdateUrl`) en Android weigert updates die niet met jouw eigen release-keystore zijn ondertekend.
+   - Open de gedownloade APK op de telefoon en sta eenmalig "installeren uit onbekende bronnen" toe.
 5. **Testen:** app openen → welkomstkaart → windcriteria invullen → opslaan; toestemming voor
    meldingen geven; een lege plek op het startscherm ingedrukt houden → Widgets → Kite Weer App.
    De widget vult zich binnen een minuut.

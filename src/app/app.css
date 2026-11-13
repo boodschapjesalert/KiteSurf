@@ -5,25 +5,79 @@ button, .chip, .icoonknop {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Updatemelding (src/app/app.js: controleerOpUpdate). */
-.update-balk {
+/* Updatemelding (src/app/app.js: controleerOpUpdate / toonUpdatePopup). */
+.update-popup-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  background: #1565c0;
-  color: #fff;
-  font-size: 14px;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(2px);
 }
-.update-balk span { flex: 1; }
-.update-balk a { color: #fff; font-weight: bold; text-decoration: underline; }
-.update-balk-sluit {
-  background: none;
-  border: none;
-  color: #fff;
+.update-popup {
+  width: 100%;
+  max-width: 360px;
+  padding: 20px;
+  border-radius: 16px;
+  background: var(--bg, #ffffff);
+  color: var(--tekst, #1c1c1e);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(128, 128, 128, 0.2);
+}
+.update-popup-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(47, 128, 237, 0.14);
+  color: var(--knop-bg, #2f80ed);
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+.update-popup-titel {
+  margin: 0 0 8px;
   font-size: 20px;
-  line-height: 1;
-  padding: 0 4px;
+  line-height: 1.25;
+}
+.update-popup-tekst {
+  margin: 0 0 10px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+.update-popup-hint {
+  margin: 0 0 16px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--hint, #8e8e93);
+}
+.update-popup-acties {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.update-popup-download {
+  display: block;
+  text-align: center;
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: var(--knop-bg, #2f80ed);
+  color: var(--knop-tekst, #ffffff);
+  font-size: 15px;
+  font-weight: 700;
+  text-decoration: none;
+}
+.update-popup-later {
+  padding: 10px 14px;
+  border: 1px solid rgba(128, 128, 128, 0.28);
+  border-radius: 10px;
+  background: var(--sectie-bg, #f2f2f7);
+  color: var(--tekst, #1c1c1e);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
 }
 
 /* "⟳ bijwerken…" naast de locatienaam terwijl de app op de achtergrond ververst. */

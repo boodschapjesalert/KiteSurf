@@ -11,7 +11,7 @@
 // Handmatig ophogen bij elke betekenisvolle wijziging/deploy — zichtbaar onderin de app, zodat
 // eenvoudig te controleren is of een nieuwe versie daadwerkelijk live staat (i.p.v. een gecachete
 // oudere versie in de browser).
-var KITEWEER_VERSIE = 'v99 (5 okt 2026)';
+var KITEWEER_VERSIE = 'v100 (13 nov 2026)';
 
 /**
  * Verkort een URL via TinyURL's geauthenticeerde API (eigen account + API-token in Script
@@ -54,6 +54,18 @@ function verkortUrl_(langeUrl) {
   return langeUrl;
 }
 
+function heeftBeheerToegang_(e) {
+  var sleutel = getBeheerSleutel_();
+  if (!sleutel) return true;
+  return !!(e && e.parameter && e.parameter.sleutel === sleutel);
+}
+
+function verbodenAntwoord_() {
+  return ContentService.createTextOutput(JSON.stringify({ fout: 'Geen toegang (sleutel vereist)' })).setMimeType(
+    ContentService.MimeType.JSON
+  );
+}
+
 function doGet(e) {
   // ?actie=widget geeft een kleine, platte JSON-samenvatting terug i.p.v. de HTML-app — voor
   // niet-browser clients zoals een Tasker-widget die geen google.script.run kunnen gebruiken (dat
@@ -65,8 +77,20 @@ function doGet(e) {
   // ?actie=onderhoud herstelt de twee dingen die buiten de code om ingesteld moesten worden en
   // daardoor stil kapot konden staan: de Telegram-webhook (was nooit geregistreerd, dus koppelen
   // faalde geruisloos) en de meldingen-trigger (moest handmatig in de editor gedraaid worden).
-  // Beide acties zijn idempotent en geven niets gevoeligs prijs, dus de route mag publiek zijn.
+  // Als BEHEER_SLEUTEL gezet is wordt `&sleutel=` gecontroleerd; zonder sleutel geldt een korte
+  // afkoelperiode zodat herhaalde publieke aanroepen geen triggers blijven verwijderen/herbouwen.
   if (e && e.parameter && e.parameter.actie === 'onderhoud') {
+    if (!heeftBeheerToegang_(e)) return verbodenAntwoord_();
+    if (!getBeheerSleutel_()) {
+      var cache = CacheService.getScriptCache();
+      if (cache.get('onderhoud_cooldown')) {
+        return ContentService.createTextOutput(JSON.stringify({
+          ok: true,
+          reden: 'recent-uitgevoerd (wacht max 5 min of stel BEHEER_SLEUTEL in)',
+        })).setMimeType(ContentService.MimeType.JSON);
+      }
+      cache.put('onderhoud_cooldown', '1', 300);
+    }
     return ContentService.createTextOutput(JSON.stringify(voerOnderhoudUit_(), null, 2)).setMimeType(
       ContentService.MimeType.JSON
     );
@@ -74,23 +98,18 @@ function doGet(e) {
   // ?actie=laatste-lege-samenvatting geeft de laatst vastgelegde momentopname terug van een dag-
   // oordeel dat leeg/te kort terugkwam zónder fout (zie de toelichting bij LAATSTE_LEGE_SAMENVATTING
   // in verstuurDagelijkseSamenvatting_, Meldingen.gs) — voor het navragen van een gebruikersrapport
-  // ("geen grafieken/data") zonder op Apps Script's uitvoeringslog aangewezen te zijn. Geeft alleen
-  // een locatienaam/coördinaten/instellingen terug, niets gebruikers- of chat-gebonden, dus de route
-  // mag net als ?actie=onderhoud publiek zijn.
+  // ("geen grafieken/data") zonder op Apps Script's uitvoeringslog aangewezen te zijn.
   if (e && e.parameter && e.parameter.actie === 'laatste-lege-samenvatting') {
+    if (!heeftBeheerToegang_(e)) return verbodenAntwoord_();
     var props = PropertiesService.getScriptProperties();
     return ContentService.createTextOutput(JSON.stringify({
       legeDagOordelen: JSON.parse(props.getProperty('LAATSTE_LEGE_SAMENVATTING') || 'null'),
       misluktVersturen: JSON.parse(props.getProperty('LAATSTE_MISLUKTE_VERSTUURPOGING') || 'null'),
     }, null, 2)).setMimeType(ContentService.MimeType.JSON);
   }
-  // ?actie=meldingen-status: alleen-lezen inzicht in de meldingen-trigger — de laatste runs (duur,
-  // opwarm-duur, welke samenvattingen en hoe lang), of de laatste run is afgebroken, de laatste
-  // mislukte bronaanvragen (statuscode + respons), openstaande herkansingen, en per Telegram-profiel
-  // de verwachte belasting. Aanleiding: "soms wel, soms geen dagelijkse melding" zonder enig zicht
-  // op wat een run eigenlijk doet. Profielen alleen op volgnummer; geen gebruikers-/chat-ID, dus
-  // publiek net als ?actie=onderhoud.
+  // ?actie=meldingen-status: alleen-lezen inzicht in de meldingen-trigger.
   if (e && e.parameter && e.parameter.actie === 'meldingen-status') {
+    if (!heeftBeheerToegang_(e)) return verbodenAntwoord_();
     var msProps = PropertiesService.getScriptProperties();
     var msRunLog = JSON.parse(msProps.getProperty('RUN_LOG') || '[]');
     var msLaatsteStart = msProps.getProperty('RUN_LAATSTE_START');
@@ -122,8 +141,9 @@ function doGet(e) {
     }, null, 2)).setMimeType(ContentService.MimeType.JSON);
   }
   // ?actie=verificatie: toetsing van de weermodellen aan KNMI-metingen + welke meetstations dat zijn (zie
-  // Verificatie.gs). Alleen stations en statistiek, geen gebruikers-, profiel- of spot-gegevens: publiek.
+  // Verificatie.gs).
   if (e && e.parameter && e.parameter.actie === 'verificatie') {
+    if (!heeftBeheerToegang_(e)) return verbodenAntwoord_();
     return ContentService.createTextOutput(JSON.stringify(bouwVerificatieRapport_(), null, 2)).setMimeType(
       ContentService.MimeType.JSON
     );
@@ -148,16 +168,22 @@ function doGet(e) {
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }
 
+function normaalGebruikerId_(gebruikerId) {
+  if (!gebruikerId || typeof gebruikerId !== 'string') return null;
+  var schoongemaakt = gebruikerId.trim().slice(0, 100);
+  return /^[A-Za-z0-9_-]{1,100}$/.test(schoongemaakt) ? schoongemaakt : null;
+}
+
 /**
  * Zoekt het profiel en de gevraagde (of anders eerste) favoriete locatie op voor widgetJson_.
  * `{ fout }` bij een ongeldig/ontbrekend gebruikers-ID of een profiel zonder favoriete locaties,
  * anders `{ profiel, locatie }`.
  */
 function widgetProfielEnLocatie_(e) {
-  var gebruikerId = e && e.parameter && e.parameter.id;
-  if (!gebruikerId) return { fout: 'Ontbrekend ?id=<gebruikerId>' };
+  var id = normaalGebruikerId_(e && e.parameter && e.parameter.id);
+  if (!id) return { fout: 'Ontbrekend of ongeldig ?id=<gebruikerId>' };
 
-  var profiel = laadProfiel_(gebruikerId.trim().slice(0, 100));
+  var profiel = laadProfiel_(id);
   if (!profiel.favorieteLocaties || profiel.favorieteLocaties.length === 0) {
     return { fout: 'Geen favoriete locaties in dit profiel' };
   }
@@ -165,7 +191,7 @@ function widgetProfielEnLocatie_(e) {
   var locatie =
     (gevraagdeLocatieId && profiel.favorieteLocaties.filter(function (l) { return l.id === gevraagdeLocatieId; })[0]) ||
     profiel.favorieteLocaties[0];
-  return { profiel: profiel, locatie: locatie, gebruikerId: gebruikerId.trim().slice(0, 100) };
+  return { profiel: profiel, locatie: locatie, gebruikerId: id };
 }
 
 /**
@@ -232,39 +258,32 @@ function bouwWidgetData_(profiel, locatie, grafiekVoorGebruikerId) {
     var dagen = groepeerPerDag(weerData.urenData).slice(0, dagenVooruit);
     if (dagen.length === 0) return { fout: 'Geen weerdata beschikbaar voor deze locatie' };
 
+    function dagOptiesMetZon(datum) {
+      var zon = zonInfoVoorDatum(weerData.zonInfo, datum);
+      return Object.assign({}, dagvensterOpties, { zonsondergang: zon.zonsondergang });
+    }
+
     // Screen 1 (oorspronkelijk) / grafiekbron voor screen 2: "vandaag" over de volle dag,
     // ongefilterd op de klok — dezelfde berekening als de webapp's Grafiek-tab.
-    var dagScoreVandaag = berekenDagScore(dagen[0].uren, instellingen, dagvensterOpties);
+    var dagScoreVandaag = berekenDagScore(dagen[0].uren, instellingen, dagOptiesMetZon(dagen[0].datum));
     var ruwVandaag = ruwVanDagScore(dagScoreVandaag);
 
     var grafiekUrl = null;
     try {
-      // Zelfde dag-grafiek (wind + regen + score-kleur) als de Telegram-berichten (Meldingen.gs) —
-      // dagScoreVandaag.uurResultaten is al precies de vorm die bouwDagGrafiekBlob_ verwacht.
-      // Filtert zelf op het vaste 09:00-20:00-grafiekvenster (GRAFIEK_START_UUR_/EIND_UUR_), niet
-      // op het profiel-Dagvenster — zelfde vaste venster als de webapp's eigen Grafiek-tab.
-      // Alleen voor de Tasker-widget (met gebruikers-ID): de Slides-grafiek kost ~5s.
       var afbeelding = grafiekVoorGebruikerId ? bouwDagGrafiekBlob_(dagScoreVandaag.uurResultaten, instellingen) : null;
       if (afbeelding) grafiekUrl = slaWidgetGrafiekOp_(afbeelding, grafiekVoorGebruikerId);
     } catch (fout) {
       grafiekUrl = null; // Grafiek-opbouw/-upload mislukt: widget blijft werken zonder afbeelding.
     }
 
-    // Nieuw, voor widget-scherm 1: de eerstvolgende mogelijkheid om te kiten vanaf NU, gezocht
-    // over de hele Voorspellingshorizon — een aaneengesloten blok van minimaal
-    // profiel.minimaleSessieUren uur (standaard 2) dat aan de ingestelde drempelwaarden voldoet,
-    // via dezelfde berekenDagScore/vindBesteVenster als de webapp-kaarten (kleur !== 'rood' telt
-    // hier als "geschikt", zelfde maatstaf als de dagkaart-badge en de Telegram-alert). Vandaag
-    // tellen alleen uren vanaf nu mee — zelfde "is dit al voorbij"-grens als de Tabel-weergave in
-    // JavaScript.html (new Date(tijdstip) >= nu) — anders zou de widget een kans kunnen tonen die
-    // al verstreken is.
     var nu = new Date();
     var volgendeKans = { gevonden: false };
     for (var i = 0; i < dagen.length; i++) {
       var urenVoorZoektocht = i === 0
         ? dagen[0].uren.filter(function (u) { return new Date(u.tijdstip) >= nu; })
         : dagen[i].uren;
-      var kansScore = berekenDagScore(urenVoorZoektocht, instellingen, dagvensterOpties);
+      var zonKans = zonInfoVoorDatum(weerData.zonInfo, dagen[i].datum);
+      var kansScore = berekenDagScore(urenVoorZoektocht, instellingen, dagOptiesMetZon(dagen[i].datum));
       if (!kansScore.besteVenster || kansScore.kleur === 'rood') continue;
 
       var ruwKans = ruwVanDagScore(kansScore);
@@ -273,9 +292,8 @@ function bouwWidgetData_(profiel, locatie, grafiekVoorGebruikerId) {
         dagLabel: MELDING_DAG_LABELS[i] || formatDatumKort(dagen[i].datum),
         datum: dagen[i].datum,
         vanaf: widgetUurLabel(kansScore.besteVenster.startTijdstip, 0),
-        // +1 uur: het laatste uur van het venster loopt tot het eind van dat uur (zelfde conventie
-        // als dagSamenvatting.bouwDagSamenvatting).
-        tot: widgetUurLabel(kansScore.besteVenster.eindTijdstip, 1),
+        // +1 uur: het laatste uur van het venster loopt tot het eind van dat uur (max zonsondergang + 30 min).
+        tot: widgetUurLabel(kansScore.besteVenster.eindTijdstip, 1, zonKans.zonsondergang),
         kleur: kansScore.kleur,
         score: kansScore.score,
         verdict: verdictPerKleur[kansScore.kleur] || kansScore.kleur,
@@ -288,6 +306,7 @@ function bouwWidgetData_(profiel, locatie, grafiekVoorGebruikerId) {
 
     return {
       spotnaam: locatie.naam,
+      spotDatum: Utilities.formatDate(new Date(), 'Europe/Amsterdam', 'yyyy-MM-dd'),
       bijgewerkt: Utilities.formatDate(new Date(), 'Europe/Amsterdam', 'HH:mm'),
       // "Vandaag over de volle dag" — ongewijzigd t.o.v. eerdere versies van dit endpoint.
       kleur: dagScoreVandaag.kleur,
@@ -305,8 +324,13 @@ function bouwWidgetData_(profiel, locatie, grafiekVoorGebruikerId) {
       // Per dag van de Voorspellingshorizon (vandaag eerst): oordeel, beste venster, wind en de
       // uurreeks — de Android-widget toont hier onder het overzicht een grafiek per dag van.
       dagen: dagen.map(function (dag, index) {
-        var dagScore = index === 0 ? dagScoreVandaag : berekenDagScore(dag.uren, instellingen, dagvensterOpties);
-        return bouwWidgetDag(dag, dagScore, index, { startUur: GRAFIEK_START_UUR_, eindUur: GRAFIEK_EIND_UUR_ });
+        var zonDag = zonInfoVoorDatum(weerData.zonInfo, dag.datum);
+        var dagScore = index === 0 ? dagScoreVandaag : berekenDagScore(dag.uren, instellingen, dagOptiesMetZon(dag.datum));
+        return bouwWidgetDag(dag, dagScore, index, {
+          startUur: GRAFIEK_START_UUR_,
+          eindUur: GRAFIEK_EIND_UUR_,
+          zonsondergang: zonDag.zonsondergang,
+        });
       }),
     };
   })();
@@ -382,12 +406,11 @@ function include(bestandsnaam) {
   return HtmlService.createHtmlOutputFromFile(bestandsnaam).getContent();
 }
 
-/** Simpele sanity-check op het gebruikers-ID (moet een niet-lege string zijn, verder geen eisen). */
+/** Simpele sanity-check op het gebruikers-ID (alleen veilige bestandsnaam-tekens, max 100 tekens). */
 function metGebruiker_(gebruikerId, fn) {
-  if (!gebruikerId || typeof gebruikerId !== 'string') {
-    return { fout: 'Ongeldig of ontbrekend gebruikers-ID' };
-  }
-  return fn(gebruikerId.trim().slice(0, 100));
+  var id = normaalGebruikerId_(gebruikerId);
+  if (!id) return { fout: 'Ongeldig of ontbrekend gebruikers-ID' };
+  return fn(id);
 }
 
 function getProfiel(gebruikerId) {
@@ -398,34 +421,20 @@ function getProfiel(gebruikerId) {
 
 function saveProfiel(gebruikerId, ruwProfiel) {
   return metGebruiker_(gebruikerId, function (id) {
-    // Geen wijzigProfielMetLock_ hier: de client stuurt al een compleet, gewenst eind-profiel mee
-    // (geen transformatie op een vers server-gelezen profiel) — de lock rond de schrijfactie zelf
-    // beschermt wel tegen letterlijk gelijktijdig schrijven (bv. samen met de kwartier-trigger),
-    // maar niet tegen een client die met een verouderde momentopname werkte. Zie
-    // wijzigProfielMetLock_ (ProfielOpslag.gs) voor de volledige toelichting.
-    //
     // De Telegram-koppeling en de meldingsstatus beheert alleen de server: die komen uit het
     // opgeslagen profiel, niet uit wat de browser meestuurt (behoudServerBeheerdeVelden in
-    // src/logica/telegramKoppeling.js). Een tabblad dat al open stond van vóór het ontkoppelen zette
-    // anders bij "Opslaan" de oude koppeling terug — en dus weer meldingen.
-    function opslaan() {
-      return slaProfielOp_(id, behoudServerBeheerdeVelden(ruwProfiel, laadProfiel_(id)));
-    }
+    // src/logica/telegramKoppeling.js). Zo kan een client nooit telegramChatId vervalsen en zet
+    // een verouderd tabblad geen oude koppeling of laatsteSamenvattingDatum terug.
     var lock = LockService.getScriptLock();
-    var resultaat;
-    if (lock.tryLock(10000)) {
-      try {
-        resultaat = opslaan();
-      } finally {
-        lock.releaseLock();
-      }
-    } else {
-      // Kon de lock niet krijgen (een andere schrijver is al bezig) — toch opslaan i.p.v. de
-      // gebruikers-actie te laten mislukken; beter een zeldzame race dan een opslaan dat zomaar
-      // faalt zonder duidelijke reden voor de gebruiker.
-      resultaat = opslaan();
+    if (!lock.tryLock(10000)) {
+      return { fout: 'Opslaan is even druk, probeer het over enkele seconden opnieuw' };
     }
-    return { profiel: resultaat.profiel, fouten: resultaat.fouten };
+    try {
+      var resultaat = slaProfielOp_(id, behoudServerBeheerdeVelden(ruwProfiel, laadProfiel_(id)));
+      return { profiel: resultaat.profiel, fouten: resultaat.fouten };
+    } finally {
+      lock.releaseLock();
+    }
   });
 }
 
@@ -527,7 +536,8 @@ function bepaalDagOordelenVoorLocatie_(profiel, locatie, dagenVooruit) {
   var dagen = groepeerPerDag(weerData.urenData).slice(0, dagenVooruit);
   return dagen.map(function (dag) {
     var zon = zonInfoVoorDatum(weerData.zonInfo, dag.datum);
-    var dagScore = berekenDagScore(dag.uren, instellingen, dagvensterOpties);
+    var dagOpties = Object.assign({}, dagvensterOpties, { zonsondergang: zon.zonsondergang });
+    var dagScore = berekenDagScore(dag.uren, instellingen, dagOpties);
     return {
       datum: dag.datum,
       zonsopgang: zon.zonsopgang,
@@ -536,7 +546,7 @@ function bepaalDagOordelenVoorLocatie_(profiel, locatie, dagenVooruit) {
       // Server-side samengesteld (src/logica/dagSamenvatting.js) i.p.v. in de front-end: het is
       // echte tekstlogica (trends, drempels) die zonder browser getest kan worden, en zo kan een
       // Telegram-melding er dezelfde zin uit halen.
-      samenvatting: bouwDagSamenvatting(dagScore, dagvensterOpties),
+      samenvatting: bouwDagSamenvatting(dagScore, dagOpties),
       // Welke wind-databronnen deze dag daadwerkelijk hebben bijgedragen (zie
       // forecastSamenstellen.windBronnenVanDag) — transparantie bij een verder-vooruit-
       // ingestelde dagenVooruit: bronnen met een kortere eigen horizon (Windfinder, RWS) vallen

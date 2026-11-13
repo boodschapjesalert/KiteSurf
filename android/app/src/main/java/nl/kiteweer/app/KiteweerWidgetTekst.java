@@ -149,4 +149,14 @@ final class KiteweerWidgetTekst {
         if (tijd == null || !tijd.matches("\\d{1,2}:\\d{2}")) return -1;
         return Integer.parseInt(tijd.substring(0, tijd.indexOf(':')));
     }
+
+    /** "14:30" -> 14.5f in spot-tijd; -1f als het geen geldige HH:mm-tijd is. */
+    static float uurDecimalVan(String tijd) {
+        if (tijd == null || !tijd.matches("\\d{1,2}:\\d{2}")) return -1f;
+        int dubbelePunt = tijd.indexOf(':');
+        int uur = Integer.parseInt(tijd.substring(0, dubbelePunt));
+        int minuut = Integer.parseInt(tijd.substring(dubbelePunt + 1));
+        if (uur < 0 || uur > 23 || minuut < 0 || minuut > 59) return -1f;
+        return uur + minuut / 60f;
+    }
 }

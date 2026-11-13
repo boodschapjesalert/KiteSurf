@@ -100,7 +100,9 @@ function recentAlGeantwoord_(chatId) {
  */
 function haalStartPayloadUit_(tekst) {
   var match = /^\/start(?:@\w+)?(?:\s+(\S+))?$/.exec((tekst || '').trim());
-  return match && match[1] ? match[1].slice(0, 100) : null;
+  if (!match || !match[1]) return null;
+  var id = match[1].slice(0, 100);
+  return /^[A-Za-z0-9_-]{1,100}$/.test(id) ? id : null;
 }
 
 /**
@@ -181,8 +183,8 @@ function verwerkTelegramBericht_(message) {
   if (status === 'gekoppeldAanBestaand') {
     tekst =
       '🪁 Gekoppeld! Je bestaande profiel is nu aan Telegram gekoppeld.\n\n' +
-      'Elke ochtend om 08:00 stuur ik hier een 3-daagse kitesurf-vooruitzicht voor je favoriete ' +
-      'locaties (goed/niet goed volgens je meldingsregel).\n\n' +
+      'Op het in je profiel gekozen tijdstip stuur ik hier het kitesurf-vooruitzicht voor je favoriete ' +
+      'locaties (en eventueel directe alerts zodra een dag goed wordt volgens je eigen score-criteria).\n\n' +
       'Open de app hier: ' + appLink + '\n\nStoppen met deze berichten kan altijd met /stop.';
   } else if (status === 'algGekoppeld') {
     tekst = '🪁 Je hebt al een profiel gekoppeld. Open de app hier:\n' + appLink;
@@ -190,8 +192,8 @@ function verwerkTelegramBericht_(message) {
     tekst =
       '🪁 Welkom bij de Kite Weer App!\n\n' +
       'Open de app hier om je criteria en dagvenster in te stellen:\n' + appLink + '\n\n' +
-      'Elke ochtend om 08:00 stuur ik hier een 3-daagse kitesurf-vooruitzicht voor je favoriete ' +
-      'locaties (goed/niet goed volgens je meldingsregel: minimaal de ingestelde windkracht + richting).\n\n' +
+      'Standaard om 08:00 (instelbaar bij ⚙️ Instellingen) stuur ik hier een meerdaags kitesurf-vooruitzicht voor je favoriete ' +
+      'locaties op basis van je eigen criteria, en optioneel directe alerts zodra een dag groen wordt.\n\n' +
       'Bewaar de link hierboven — er is geen account/login. Had je al een browser-profiel? Gebruik ' +
       'dan liever de "🔗 Koppel aan Telegram"-knop bij ⚙️ Instellingen in dát profiel, i.p.v. dit ' +
       'nieuwe profiel — dan blijven je bestaande favorieten en instellingen behouden.\n\n' +

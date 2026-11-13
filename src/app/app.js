@@ -264,41 +264,130 @@
     },
   };
 
-  // Updatemelding: de APK komt niet uit de Play Store, dus de app kijkt zelf of er in de repo een
-  // nieuwere versie klaarstaat (downloads/versie.json, bijgewerkt bij elke nieuwe APK). Zo ja: een
-  // balk bovenaan met een downloadlink. Geen verbinding of geen bestand: stil niets tonen.
+  // Updatemelding: de APK komt niet uit de Play Store, dus de app controleert zowel
+  // downloads/versie.json (bijv. voor een alleen-lezen Drive-link) als de nieuwste GitHub Release.
+  // Alleen vertrouwde HTTPS-bronnen (GitHub-repo/releases of Google Drive) worden geaccepteerd.
   var UPDATE_URL = 'https://raw.githubusercontent.com/boodschapjesalert/KiteSurf/main/downloads/versie.json';
+  var GITHUB_RELEASE_URL = 'https://api.github.com/repos/boodschapjesalert/KiteSurf/releases/latest';
+  var UPDATE_UITGESTELD_KEY = 'kiteweer_update_uitgesteld';
 
-  function toonUpdateBalk(info) {
-    if (document.getElementById('updateBalk')) return;
-    var balk = document.createElement('div');
-    balk.id = 'updateBalk';
-    balk.className = 'update-balk';
-    var tekst = document.createElement('span');
-    tekst.textContent = '⬆️ Nieuwe versie ' + info.versie + (info.notitie ? ': ' + info.notitie : '') + ' ';
+  function haalUpdateVanVersieJson() {
+    return fetch(UPDATE_URL + '?t=' + Date.now(), { cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (info) {
+        if (!info || !info.versie || !logica.isToegestaneUpdateUrl(info.url)) return null;
+        return {
+          versie: String(info.versie),
+          url: String(info.url),
+          notitie: info.notitie ? String(info.notitie) : ''
+        };
+      })
+      .catch(function () { return null; });
+  }
+
+  function haalUpdateVanGitHubRelease() {
+    return fetch(GITHUB_RELEASE_URL, {
+      cache: 'no-store',
+      headers: { Accept: 'application/vnd.github+json' }
+    })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (rel) {
+        if (!rel || !rel.tag_name || !Array.isArray(rel.assets)) return null;
+        var apk = rel.assets.find(function (a) {
+          return a && /\.apk$/i.test(a.name || '') && logica.isToegestaneUpdateUrl(a.browser_download_url);
+        });
+        if (!apk) return null;
+        var eersteRegel = String(rel.body || '').split(/\r?\n/).map(function (s) { return s.trim(); }).find(Boolean) || '';
+        return {
+          versie: String(rel.tag_name),
+          url: String(apk.browser_download_url),
+          notitie: rel.name && rel.name !== rel.tag_name ? String(rel.name) : eersteRegel
+        };
+      })
+      .catch(function () { return null; });
+  }
+
+  function toonUpdatePopup(info) {
+    if (document.getElementById('updatePopup')) return;
+    try {
+      if (window.sessionStorage && sessionStorage.getItem(UPDATE_UITGESTELD_KEY) === info.versie) return;
+    } catch (_) {}
+
+    var overlay = document.createElement('div');
+    overlay.id = 'updatePopup';
+    overlay.className = 'update-popup-overlay';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-labelledby', 'updatePopupTitel');
+
+    var kaart = document.createElement('div');
+    kaart.className = 'update-popup';
+
+    var badge = document.createElement('div');
+    badge.className = 'update-popup-badge';
+    badge.textContent = 'App-update beschikbaar';
+
+    var titel = document.createElement('h2');
+    titel.id = 'updatePopupTitel';
+    titel.className = 'update-popup-titel';
+    titel.textContent = 'Versie ' + info.versie.replace(/^v/i, '');
+
+    kaart.appendChild(badge);
+    kaart.appendChild(titel);
+
+    if (info.notitie) {
+      var tekst = document.createElement('p');
+      tekst.className = 'update-popup-tekst';
+      tekst.textContent = info.notitie;
+      kaart.appendChild(tekst);
+    }
+
+    var hint = document.createElement('p');
+    hint.className = 'update-popup-hint';
+    hint.textContent = 'Download de nieuwe APK en tik erop om bij te werken. Android behoudt je instellingen automatisch.';
+    kaart.appendChild(hint);
+
+    var acties = document.createElement('div');
+    acties.className = 'update-popup-acties';
+
     var link = document.createElement('a');
+    link.className = 'update-popup-download';
     link.href = info.url;
     link.target = '_blank';
-    link.rel = 'noopener';
-    link.textContent = 'Download';
-    var sluit = document.createElement('button');
-    sluit.className = 'update-balk-sluit';
-    sluit.setAttribute('aria-label', 'Sluiten');
-    sluit.textContent = '×';
-    sluit.onclick = function () { balk.remove(); };
-    tekst.appendChild(link);
-    balk.appendChild(tekst);
-    balk.appendChild(sluit);
-    document.body.insertBefore(balk, document.body.firstChild);
+    link.rel = 'noopener noreferrer';
+    link.textContent = 'Download update';
+
+    var later = document.createElement('button');
+    later.type = 'button';
+    later.className = 'update-popup-later';
+    later.textContent = 'Later';
+    later.onclick = function () {
+      try {
+        if (window.sessionStorage) sessionStorage.setItem(UPDATE_UITGESTELD_KEY, info.versie);
+      } catch (_) {}
+      overlay.remove();
+    };
+
+    acties.appendChild(link);
+    acties.appendChild(later);
+    kaart.appendChild(acties);
+    overlay.appendChild(kaart);
+    overlay.onclick = function (e) {
+      if (e.target === overlay) later.click();
+    };
+    document.body.appendChild(overlay);
   }
 
   function controleerOpUpdate() {
     if (!config.versie || !window.fetch) return;
-    fetch(UPDATE_URL + '?t=' + Date.now(), { cache: 'no-store' })
-      .then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (info) {
-        if (!info || !/^https:\/\//.test(info.url || '')) return;
-        if (logica.isNieuwereAppVersie(info.versie, config.versie)) toonUpdateBalk(info);
+    Promise.all([haalUpdateVanVersieJson(), haalUpdateVanGitHubRelease()])
+      .then(function (kandidaten) {
+        var nieuwste = null;
+        kandidaten.forEach(function (k) {
+          if (!k || !logica.isNieuwereAppVersie(k.versie, config.versie)) return;
+          if (!nieuwste || logica.isNieuwereAppVersie(k.versie, nieuwste.versie)) nieuwste = k;
+        });
+        if (nieuwste) toonUpdatePopup(nieuwste);
       })
       .catch(function () {});
   }

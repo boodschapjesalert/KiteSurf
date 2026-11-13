@@ -15,7 +15,14 @@ function vindProfielBestand_(map, gebruikerId) {
 function laadProfiel_(gebruikerId) {
   var map = DriveApp.getFolderById(getProfielenMapId_());
   var bestand = vindProfielBestand_(map, gebruikerId);
-  var ruw = bestand ? JSON.parse(bestand.getBlob().getDataAsString()) : null;
+  var ruw = null;
+  if (bestand) {
+    try {
+      ruw = JSON.parse(bestand.getBlob().getDataAsString());
+    } catch (e) {
+      Logger.log('Corrupt profielbestand voor ' + gebruikerId + ', standaardprofiel gebruikt.');
+    }
+  }
   var resultaat = valideerEnVulProfielAan(ruw, gebruikerId);
   return resultaat.profiel;
 }

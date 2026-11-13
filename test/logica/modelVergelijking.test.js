@@ -240,3 +240,43 @@ describe('evalueerVerificatie', () => {
     assert.deepEqual(evalueerVerificatie({}), {});
   });
 });
+
+describe('aggregeerVerificatie vlaag-weging (nVlaag)', () => {
+  const { aggregeerVerificatie } = require('../../src/logica/modelVergelijking');
+
+  test('weegt biasVlaag en maeVlaag met nVlaag i.p.v. totaal aantal winddagen n', () => {
+    const rijen = aggregeerVerificatie({
+      '06210': {
+        naam: 'Valkenburg',
+        rijen: [{
+          dagenVooruit: 0,
+          model: 'knmi_harmonie',
+          n: 10,
+          nVlaag: 1,
+          biasWind: 0,
+          maeWind: 1,
+          biasVlaag: 10,
+          maeVlaag: 10,
+        }],
+      },
+      '06235': {
+        naam: 'De Kooy',
+        rijen: [{
+          dagenVooruit: 0,
+          model: 'knmi_harmonie',
+          n: 1,
+          nVlaag: 3,
+          biasWind: 0,
+          maeWind: 1,
+          biasVlaag: 2,
+          maeVlaag: 2,
+        }],
+      },
+    });
+    assert.equal(rijen.length, 1);
+    assert.equal(rijen[0].n, 11);
+    // (10 * 1 + 2 * 3) / (1 + 3) = 4.0 (met wind-n was het (100 + 2)/11 = 9.3 geweest)
+    assert.equal(rijen[0].biasVlaag, 4);
+    assert.equal(rijen[0].maeVlaag, 4);
+  });
+});

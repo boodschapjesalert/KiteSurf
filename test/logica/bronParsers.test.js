@@ -218,3 +218,28 @@ describe('RWS-wind (echte fixtures, Hoek van Holland — zelfde meetpunt als het
     assert.equal(parseRwsWindMeting(leeg, leeg), null);
   });
 });
+
+describe('parseRwsWindMeting tijdstip-koppeling en veroudering', () => {
+  test('koppelt windrichting op hetzelfde tijdstip en slaat verouderde metingen (> 60 min) over', () => {
+    const shd = {
+      WaarnemingenLijst: [{
+        AquoMetadata: { ProcesType: 'meting' },
+        MetingenLijst: [
+          { Tijdstip: '2026-11-13T09:00:00.000+01:00', Meetwaarde: { Waarde_Numeriek: 10 } },
+        ],
+      }],
+    };
+    const rtg = {
+      WaarnemingenLijst: [{
+        AquoMetadata: { ProcesType: 'meting' },
+        MetingenLijst: [
+          { Tijdstip: '2026-11-13T09:00:00.000+01:00', Meetwaarde: { Waarde_Numeriek: 245 } },
+          { Tijdstip: '2026-11-13T09:10:00.000+01:00', Meetwaarde: { Waarde_Numeriek: 15 } },
+        ],
+      }],
+    };
+    const vers = parseRwsWindMeting(shd, rtg, '2026-11-13T09:30:00.000+01:00');
+    assert.equal(vers.windrichtingGraden, 245);
+    assert.equal(parseRwsWindMeting(shd, rtg, '2026-11-13T10:05:00.000+01:00'), null);
+  });
+});

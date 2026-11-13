@@ -170,6 +170,8 @@ http.createServer((req, res) => {
       const start = Date.now();
       let uitvoer;
       try {
+        // Elke GAS-aanroep begint met een schone teller; in één blijvende Node-VM anders opgeteld.
+        vm.runInContext("weerTelling_ = { ok: 0, fout: 0, oudeRespons: 0, reserve: 0, knmiOk: 0, knmiFout: 0, details: [] };", context);
         uitvoer = context.doPost({ postData: { contents: body, type: req.headers['content-type'] } });
       } catch (fout) {
         uitvoer = ContentService.createTextOutput(JSON.stringify({ fout: String(fout && fout.stack || fout) }));

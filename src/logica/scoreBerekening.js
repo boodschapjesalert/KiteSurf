@@ -1,6 +1,7 @@
 // Pure logica: combineert de drempelwaarde-evaluaties tot een score (1-10) en kleurcode
 // per uur en per dag, volgens het "Voorstel scoreberekening" in criteria-kiteweer-app.md.
 
+const { uurVanIso, minutenVanIso } = require('./eenheden');
 const {
   standaardDrempelwaarden,
   evalueerWindsnelheid,
@@ -263,11 +264,39 @@ function berekenDagScore(urenVanDag, instellingen, opties) {
     },
   }));
 
-  const binnenVenster = uurResultaten.filter((u) => {
-    const uur = new Date(u.tijdstip).getHours();
+  const zonsondergangMinuten = opties && opties.zonsondergang ? minutenVanIso(opties.zonsondergang) : null;
+  // Gebruikers blijven niet langer dan ~30 min na zonsondergang op het water; uren waarvan het
+  // merendeel (middelpunt +30 min) daarbuiten valt, tellen niet meer mee in het dagvenster.
+  const sunsetCutoffMinuten = zonsondergangMinuten != null ? zonsondergangMinuten + 30 : null;
+
+  const inProfielVenster = uurResultaten.filter((u) => {
+    const uur = uurVanIso(u.tijdstip);
     return uur >= startUur && uur <= eindUur;
   });
-  const relevant = binnenVenster.length > 0 ? binnenVenster : uurResultaten;
+  const naCutoffFilter = (lijst) => (
+    sunsetCutoffMinuten != null
+      ? lijst.filter((u) => uurVanIso(u.tijdstip) * 60 + 30 <= sunsetCutoffMinuten)
+      : lijst
+  );
+  const binnenVenster = naCutoffFilter(inProfielVenster);
+  // Als het ingestelde dagvenster wel uren had, maar alles ná zonsondergang+30m valt, dan is er
+  // geen bruikbaar daglicht meer — níét stiekem terugvallen op nachturen.
+  let relevant;
+  if (inProfielVenster.length > 0 && binnenVenster.length === 0) {
+    const besteVanProfiel = inProfielVenster.reduce((beste, u) => (u.score > beste.score ? u : beste), inProfielVenster[0]);
+    return {
+      score: 0,
+      kleur: 'rood',
+      noGo: false,
+      geenSessieMogelijk: true,
+      besteUur: besteVanProfiel,
+      besteVenster: null,
+      urenInVenster: [],
+      uurResultaten,
+    };
+  } else {
+    relevant = inProfielVenster.length > 0 ? binnenVenster : naCutoffFilter(uurResultaten);
+  }
 
   if (relevant.length === 0) {
     return {

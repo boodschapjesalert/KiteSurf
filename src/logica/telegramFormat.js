@@ -8,7 +8,7 @@
 // naive lokale ISO-strings (Europe/Amsterdam, zie src/gas/appsscript.json "timeZone"), dus
 // new Date(...).getHours() werkt hier hetzelfde als al in dagSamenvatting.js.
 
-const { windrichtingKompas } = require('./eenheden');
+const { windrichtingKompas, minutenVanIso, formatMinutenAlsTijd } = require('./eenheden');
 
 const KORTE_DAGNAMEN_NL = ['zo', 'ma', 'di', 'wo', 'do', 'vr', 'za'];
 const KORTE_MAANDNAMEN_NL = [
@@ -70,10 +70,8 @@ function formatGetijTekst(ruw) {
 /** "🌇 20:35" — zelfde icoon als de webapp; geen weersindicatie, alleen het tijdstip. */
 function formatZonsondergangTekst(iso) {
   if (!iso) return null;
-  const d = new Date(iso);
-  const uu = String(d.getHours()).padStart(2, '0');
-  const mm = String(d.getMinutes()).padStart(2, '0');
-  return '🌇 ' + uu + ':' + mm;
+  const min = minutenVanIso(iso);
+  return min != null ? '🌇 ' + formatMinutenAlsTijd(min) : null;
 }
 
 /**

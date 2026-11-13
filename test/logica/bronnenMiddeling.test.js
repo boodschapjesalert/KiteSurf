@@ -72,3 +72,35 @@ describe('middelForecastPerVariabele', () => {
     assert.deepEqual(resultaat.windKnopen.gemiddelde, [10.5, 12, 13.5]);
   });
 });
+
+describe('middelRichtingen (circulair)', () => {
+  const { middelRichtingen } = require('../../src/logica/bronnenMiddeling');
+
+  test('middelt 355° en 5° naar 0° i.p.v. 180°', () => {
+    const res = middelRichtingen([
+      { bron: 'openMeteo', waarde: 355 },
+      { bron: 'buienradar', waarde: 5 },
+    ]);
+    assert.equal(Math.round(res.gemiddelde), 0);
+    assert.deepEqual(res.gebruikteBronnen, ['openMeteo', 'buienradar']);
+  });
+
+  test('negeert uitschieter aan de andere kant van de kompasroos', () => {
+    const res = middelRichtingen([
+      { bron: 'openMeteo', waarde: 355 },
+      { bron: 'buienradar', waarde: 5 },
+      { bron: 'weerlive', waarde: 180 },
+    ]);
+    assert.equal(Math.round(res.gemiddelde), 0);
+    assert.deepEqual(res.genegeerdeBronnen, ['weerlive']);
+  });
+
+  test('lege, enkele en exact tegengestelde (0°/180°) invoer blijft deterministisch', () => {
+    assert.equal(middelRichtingen([]).gemiddelde, null);
+    assert.equal(middelRichtingen([{ bron: 'a', waarde: -10 }]).gemiddelde, 350);
+    assert.equal(
+      middelRichtingen([{ bron: 'a', waarde: 0 }, { bron: 'b', waarde: 180 }]).gemiddelde,
+      0
+    );
+  });
+});

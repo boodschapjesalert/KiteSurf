@@ -251,6 +251,7 @@ function evalueerVerificatie(data) {
       dagenVooruit: c.k,
       model: c.model,
       n: c.fW.length,
+      nVlaag: c.fG.length,
       biasWind: rond(biasW),
       maeWind: rond(maeW),
       biasVlaag: biasG == null ? null : rond(biasG),
@@ -278,9 +279,10 @@ function aggregeerVerificatie(stations) {
       c.sBias += r.biasWind * r.n;
       c.sMae += r.maeWind * r.n;
       if (r.biasVlaag != null) {
-        c.sBiasG += r.biasVlaag * r.n;
-        c.sMaeG += r.maeVlaag * r.n;
-        c.nG += r.n;
+        const wVlaag = r.nVlaag != null ? r.nVlaag : r.n;
+        c.sBiasG += r.biasVlaag * wVlaag;
+        c.sMaeG += r.maeVlaag * wVlaag;
+        c.nG += wVlaag;
       }
     });
   });

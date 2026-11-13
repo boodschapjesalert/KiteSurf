@@ -43,4 +43,46 @@ function windrichtingKompas(graden) {
   return KOMPAS_PUNTEN[Math.round(g / 22.5) % 16];
 }
 
-module.exports = { msNaarKnopen, kmhNaarKnopen, afstandKm, dichtstbijzijnde, windrichtingKompas };
+function isUtcOfOffsetIso(s) {
+  return /(Z|[+-]\d{2}:?\d{2})$/i.test(s);
+}
+
+/**
+ * Leest uur (0-23) uit een ISO-tijdstip. Naive lokale tijdstippen ("YYYY-MM-DDTHH:mm") worden
+ * rechtstreeks uit de string gelezen (onafhankelijk van machine-tijdzone); tijdstippen mét Z of
+ * tijdzone-offset worden via Date geconverteerd.
+ */
+function uurVanIso(tijdstip) {
+  const s = String(tijdstip || '').trim();
+  const m = /T(\d{2}):(\d{2})/.exec(s);
+  if (m && !isUtcOfOffsetIso(s)) return Number(m[1]);
+  return new Date(s).getHours();
+}
+
+/** Leest minuten sinds middernacht (0-1439) uit een ISO-tijdstip. */
+function minutenVanIso(tijdstip) {
+  const s = String(tijdstip || '').trim();
+  const m = /T(\d{2}):(\d{2})/.exec(s);
+  if (m && !isUtcOfOffsetIso(s)) return Number(m[1]) * 60 + Number(m[2]);
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? null : d.getHours() * 60 + d.getMinutes();
+}
+
+/** Formatteert minuten sinds middernacht naar "HH:mm" (modulo 24 uur). */
+function formatMinutenAlsTijd(minuten) {
+  const genorm = ((Math.round(minuten) % 1440) + 1440) % 1440;
+  const uu = Math.floor(genorm / 60);
+  const mm = genorm % 60;
+  return (uu < 10 ? '0' : '') + uu + ':' + (mm < 10 ? '0' : '') + mm;
+}
+
+module.exports = {
+  msNaarKnopen,
+  kmhNaarKnopen,
+  afstandKm,
+  dichtstbijzijnde,
+  windrichtingKompas,
+  uurVanIso,
+  minutenVanIso,
+  formatMinutenAlsTijd,
+};

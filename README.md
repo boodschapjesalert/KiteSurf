@@ -1,9 +1,9 @@
 ﻿# Kite Weer App
 
-Een webapp die kitesurfers een 3-daags weeroordeel geeft (kleurcode, score, uurdetail) op basis
+Een webapp die kitesurfers een weeroordeel geeft (kleurcode, score, uurdetail) op basis
 van meerdere gratis weerbronnen, met per-gebruiker instelbare drempelwaarden, favoriete spots,
-en een dagelijkse Telegram-samenvatting (08:00) die aangeeft welke van vandaag/morgen/overmorgen
-aan een expliciete windregel voldoen.
+en instelbare Telegram-meldingen (dagelijkse samenvatting en/of directe groene-dag-alert),
+rekening houdend met daglicht (afgekapt op zonsondergang + 30 min).
 
 Live op: `https://script.google.com/macros/s/AKfycbxaxYVjqJxb4IK5ep3KrVmtrMJHCVFf3j68kVzz0JhxBtKWyzYag7yI5jVF6R5RC0QY8w/exec`
 (voeg `?id=<je-eigen-uuid>` toe — die krijg je automatisch bij je eerste bezoek, zie "Toegang" hieronder).
@@ -644,7 +644,7 @@ Telegram-webhook op `doPost` in Code.gs):
   **nieuw**, los profiel wordt aangemaakt en aan de chat gekoppeld; de bot stuurt de link naar dát
   nieuwe profiel terug (met een hint om in plaats daarvan de koppel-knop vanuit een bestaand
   profiel te gebruiken).
-- **Elk uur** → `Meldingen.gs` controleert per profiel of de directe alert een match heeft en/of
+- **Elke 15 minuten** → `Meldingen.gs` controleert per profiel of de directe alert een match heeft en/of
   "nu" het gekozen samenvattingsuur is (zie "Meldingen" hierboven), en stuurt zo nodig naar het
   gekoppelde chat-ID.
 
@@ -1006,11 +1006,10 @@ doel-URL's (`script.google.com`, `example.com`, `anthropic.com`). Geen IP-blokka
 flood-bescherming dus (dat zou domein- of IP-afhankelijk variëren), maar een structureel kapotte
 of uitgeschakelde dienst op het moment van testen. Niet gebruikt.
 
-Nu dus gewoon de lange URL, overal: `bouwDeelLink` (Code.gs, hernoemd vanaf `bouwVerkorteDeelLink`),
-de Telegram-koppel-antwoorden en de dagelijkse samenvatting. Enige overgebleven betrouwbare optie
-voor een korte link zonder tussenpagina is TinyURL's **geauthenticeerde** API (eigen account +
-API-token, i.p.v. de anonieme `api-create.php`) — vereist dat de gebruiker zelf een gratis account
-aanmaakt en een token aanlevert, dus bewust niet zomaar geïmplementeerd zonder die stap.
+Nu standaard gewoon de lange URL — tenzij je optioneel `TINYURL_API_TOKEN` instelt in de Script
+Properties: dan gebruikt `verkortUrl_` (`Code.gs`) TinyURL's **geauthenticeerde** API
+(`api.tinyurl.com/create`, zonder tussenpagina), ook voor de Telegram-koppel-antwoorden en
+de dagelijkse samenvatting (`bouwDeelLink` / `verkortUrl_`); zonder token blijft het de lange URL.
 
 ### Automatisch Instellingen openen bij een nog niet geconfigureerd profiel
 
@@ -1183,13 +1182,14 @@ voorspelling en ververst stil op de achtergrond ("⟳ bijwerken…" naast de loc
 - Zonder verbinding blijft de bewaarde voorspelling staan met "Geen verbinding — dit is de
   voorspelling van HH:MM".
 
-**Updates.** De app kijkt bij het openen in `downloads/versie.json` op `main` (via
-raw.githubusercontent.com) of er een nieuwere versie is (`isNieuwereAppVersie` in
-`src/logica/appVersie.js`) en toont dan bovenaan een balk met een downloadlink; de update installeert
-over de oude versie heen (instellingen blijven) zolang hij met dezelfde sleutel is ondertekend. Een
-nieuwe versie uitbrengen: `version` in `package.json` ophogen, ondertekende APK bouwen, als
-`downloads/kite-weer-app-<versie>.apk` committen en `downloads/versie.json` (versie, url, notitie)
-bijwerken — pas na de merge naar `main` zien gebruikers de melding.
+**Updates.** De app kijkt bij het openen in zowel `downloads/versie.json` op `main` (via
+`raw.githubusercontent.com`) als de nieuwste GitHub Release (`releases/latest`) of er een nieuwere
+versie is (`isNieuwereAppVersie` in `src/logica/appVersie.js`) en toont een pop-up banner met
+downloadknop; de update installeert over de oude versie heen (instellingen blijven) zolang hij met
+dezelfde sleutel is ondertekend. Alleen vertrouwde GitHub/Drive-HTTPS-links worden toegestaan
+(`isToegestaneUpdateUrl`). Nieuwe versie uitbrengen: `version` ophogen en tag `v<versie>` pushen
+(GitHub Actions publiceert de release-APK), of APK op Drive delen als **Alleen lezen (Viewer)**
+en `downloads/versie.json` (versie, url, notitie) bijwerken op `main`.
 
 **Sleutelwissel 1.0.0 → 1.1.0.** De oorspronkelijke release-sleutel van 1.0.0 is niet bewaard gebleven;
 1.1.0 en later zijn met een nieuwe sleutel ondertekend. Wie 1.0.0 heeft, moet die eenmalig verwijderen en 1.1.0
@@ -1284,8 +1284,9 @@ installatiestappen (Script Properties, meldingen-trigger).
 9. **Meldingen uitsluitend via Telegram, geen e-mail.** Eerder ging dit via `MailApp`
    (in de praktijk werd e-mail als te traag/makkelijk gemist ervaren voor iets tijdgevoeligs als
    een kitesurf-window); nu is Telegram het enige kanaal en is de melding zelf ook veranderd van
-   "stuur zodra de drempel binnen de dag voor het eerst gehaald wordt" naar "stuur elke ochtend om
-   08:00 de 3-daagse vooruitzicht" (zie README.md "Meldingen"). Zonder gekoppeld Telegram-chat-ID
+   "stuur zodra de drempel binnen de dag voor het eerst gehaald wordt" naar instelbare
+   Telegram-meldingen: een dagelijkse samenvatting (standaard 08:00, afgekapt op zonsondergang +
+   30 min) en/of een directe groene-dag-alert (zie README.md "Meldingen"). Zonder gekoppeld Telegram-chat-ID
    (bot starten, zie hieronder) krijgt een profiel dus geen enkele melding.
 10. **Windrichting van een favoriete locatie wijzig je door de locatie te verwijderen (🗑️) en
     opnieuw toe te voegen** met nieuwe waarden — er is geen apart "bewerk"-formulier voor een
@@ -1300,10 +1301,10 @@ installatiestappen (Script Properties, meldingen-trigger).
     `onweer.hardNoGo` blijft standaard `true` (een veiligheidsvangnet, geen persoonlijke
     voorkeur) en de meldingsregel (§ Meldingen) heeft wél concrete standaardwaarden, omdat die
     letterlijk als getal is opgegeven.
-12. **Hoofdcriteria vs. facultatief in de score.** Op verzoek herwogen: windsnelheid (35%),
-    windrichting (20%), windvlagen (15%) en getij (15%) zijn de hoofdcriteria — getij was eerst
-    een facultatieve "nice-to-have" zonder eigen gewicht, nu een volwaardige categorie. Lucht-/
-    watertemperatuur, golfhoogte en zicht vormen samen de resterende 15% ("facultatief").
+12. **Hoofdcriteria vs. facultatief in de score.** Standaard-gewichten (`scoreBerekening.GEWICHTEN`,
+    instelbaar per profiel): windsnelheid (30%), windrichting (20%), windvlagen (15%), getij (15%)
+    en langdurige regen (10%) zijn de afzonderlijke hoofdcriteria — getij was eerst facultatief.
+    Lucht-/watertemperatuur, golfhoogte en zicht vormen samen de resterende 10% ("facultatief", tenzij apart gekozen).
     Onweer/buien ("weer") zit hier bewust niet als percentage bij: dat werkt al als hard-gate
     (harde no-go bij onweer) plus een vermenigvuldigende straf bij een neerslagwaarschuwing — dat
     weegt al zwaarder door dan een gewoon percentage zou doen. "Actuele wind" is geen aparte

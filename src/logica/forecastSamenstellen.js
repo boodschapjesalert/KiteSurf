@@ -7,7 +7,7 @@
 // worden uitsluitend meegemiddeld op het uur dat het dichtst bij het huidige tijdstip ligt —
 // conform "Vandaag/nu" in databronnen-kiteweer-app.md.
 
-const { middelWaarden } = require('./bronnenMiddeling');
+const { middelWaarden, middelRichtingen } = require('./bronnenMiddeling');
 const { classificeerGetijStatus } = require('./rwsGetij');
 
 function vindDichtstbijzijndUurIndex(tijdstippenIso, huidigTijdstipIso) {
@@ -154,7 +154,7 @@ function samenstellenUrenData(bronnen, middelingOpties) {
     }
 
     const windMiddeling = middelWaarden(windBronnen, middelingOpties);
-    const windrichtingMiddeling = middelWaarden(windrichtingBronnen, middelingOpties);
+    const windrichtingMiddeling = middelRichtingen(windrichtingBronnen, middelingOpties);
     const windvlaagMiddeling = middelWaarden(windvlaagBronnen, middelingOpties);
     const luchttempMiddeling = middelWaarden(luchttempBronnen, middelingOpties);
     const zichtMiddeling = middelWaarden(zichtBronnen, middelingOpties);

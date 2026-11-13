@@ -271,20 +271,33 @@ function parseRwsWindVerwachting(windshdJson, windrtgJson) {
   };
 }
 
+const RWS_METING_MAX_LEEFTIJD_MS = 60 * 60 * 1000;
+
 /**
  * RWS wind-"meting" (ProcesType "meting") — de daadwerkelijk gemeten, actuele wind op het
  * meetpunt. Geen forecast-reeks maar één momentopname (het laatste meetpunt), net als
- * Buienradar/Weerlive: alleen bruikbaar als "nu"-cross-check.
+ * Buienradar/Weerlive: alleen bruikbaar als "nu"-cross-check (en genegeerd als ouder dan 60 min
+ * zodra `nuIso` is meegegeven).
  */
-function parseRwsWindMeting(windshdJson, windrtgJson) {
+function parseRwsWindMeting(windshdJson, windrtgJson, nuIso) {
   const snelheid = kiesRwsProcesType(windshdJson, 'meting');
   const richting = kiesRwsProcesType(windrtgJson, 'meting');
   if (snelheid.waarden.length === 0) return null;
-  const laatsteWindKnopen = snelheid.waarden[snelheid.waarden.length - 1];
-  const laatsteRichting = richting.waarden.length ? richting.waarden[richting.waarden.length - 1] : null;
+  const laatsteIndex = snelheid.waarden.length - 1;
+  const laatsteTijdstip = snelheid.tijdstippen[laatsteIndex];
+  if (nuIso) {
+    const metingMs = new Date(laatsteTijdstip).getTime();
+    const nuMs = new Date(nuIso).getTime();
+    if (!Number.isFinite(metingMs) || nuMs - metingMs > RWS_METING_MAX_LEEFTIJD_MS) return null;
+  }
+  const richtingIndex = richting.tijdstippen.lastIndexOf(laatsteTijdstip);
+  const laatsteWindKnopen = snelheid.waarden[laatsteIndex];
+  const laatsteRichting = richtingIndex !== -1
+    ? richting.waarden[richtingIndex]
+    : (richting.waarden.length ? richting.waarden[richting.waarden.length - 1] : null);
   return {
     bron: 'rws-wind-meting',
-    tijdstip: snelheid.tijdstippen[snelheid.tijdstippen.length - 1],
+    tijdstip: laatsteTijdstip,
     windKnopen: laatsteWindKnopen != null ? msNaarKnopen(laatsteWindKnopen) : null,
     windrichtingGraden: laatsteRichting,
   };
