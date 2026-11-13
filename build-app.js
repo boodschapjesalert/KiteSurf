@@ -34,6 +34,8 @@ const LOGICA_EXPORTS = [
   'sectorenNaarRanges',
   'windrichtingNaarSectorStanden',
   'sectorStandenNaarWindrichting',
+  'bereikSectorenMetKlokMee',
+  'pasBereikToeOpStanden',
   'formatWindrichting',
   'formatRanges',
   'formatWindrichtingSamenvatting',

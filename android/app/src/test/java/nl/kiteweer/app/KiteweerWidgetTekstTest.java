@@ -96,4 +96,19 @@ public class KiteweerWidgetTekstTest {
         assertEquals("Overzicht · 1/3", KiteweerWidgetTekst.paginaLabel(dagen, 0));
         assertEquals("Morgen · 3/3", KiteweerWidgetTekst.paginaLabel(dagen, 2));
     }
+
+    @Test
+    public void kompas_sectorenEnDoel() throws Exception {
+        JSONObject wr = json("{\"besteRanges\":[[202.5,315]],\"acceptabeleRanges\":[[180,180]]}");
+        int[] standen = KiteweerWidgetTekst.sectorStanden(wr);
+        assertEquals(1, standen[10]); // ZW = 225° -> beste
+        assertEquals(2, standen[8]);  // Z = 180° -> matig
+        assertEquals(0, standen[4]);  // O = 90° -> slecht
+
+        JSONObject metKans = json("{\"windKnopen\":8,\"windrichtingGraden\":90,\"volgendeKans\":{\"gevonden\":true,\"windKnopen\":19,\"windrichtingGraden\":230}}");
+        assertEquals(19, KiteweerWidgetTekst.kompasDoel(metKans).optInt("windKnopen"));
+
+        JSONObject zonderKans = json("{\"windKnopen\":14,\"windrichtingGraden\":240,\"volgendeKans\":{\"gevonden\":false}}");
+        assertEquals(14, KiteweerWidgetTekst.kompasDoel(zonderKans).optInt("windKnopen"));
+    }
 }

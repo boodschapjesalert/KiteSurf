@@ -95,6 +95,36 @@ function sectorStandenNaarWindrichting(standen) {
   };
 }
 
+/** Alle sector-indexen van `startIdx` met de klok mee t/m `eindIdx` (wikkelt over 0/N heen). */
+function bereikSectorenMetKlokMee(startIdx, eindIdx) {
+  const s = ((Math.trunc(startIdx) % 16) + 16) % 16;
+  const e = ((Math.trunc(eindIdx) % 16) + 16) % 16;
+  const resultaat = [s];
+  let cur = s;
+  while (cur !== e) {
+    cur = (cur + 1) % 16;
+    resultaat.push(cur);
+  }
+  return resultaat;
+}
+
+/**
+ * Past een bereik (begin -> eind met de klok mee) toe op 16 sector-standen:
+ * - 'slecht': dit bereik wordt niet-geschikt (0), alle overige richtingen worden beste (1)
+ * - 'goed':   dit bereik wordt beste (1), alle overige richtingen worden niet-geschikt (0)
+ * - 'matig':  dit bereik wordt matig/acceptabel (2), de rest blijft staan
+ */
+function pasBereikToeOpStanden(standen, startIdx, eindIdx, modus) {
+  const gekozen = new Set(bereikSectorenMetKlokMee(startIdx, eindIdx));
+  const huidige = Array.isArray(standen) && standen.length === 16 ? standen.slice() : new Array(16).fill(SECTOR_UIT);
+  return huidige.map((waarde, i) => {
+    if (modus === 'slecht') return gekozen.has(i) ? SECTOR_UIT : SECTOR_BESTE;
+    if (modus === 'goed') return gekozen.has(i) ? SECTOR_BESTE : SECTOR_UIT;
+    if (modus === 'matig') return gekozen.has(i) ? SECTOR_ACCEPTABEL : waarde;
+    return waarde;
+  });
+}
+
 /** Eén windrichting als tekst, naar voorkeur: 'kompas' → "ZW", 'graden' → "225°". Nooit beide. */
 function formatWindrichting(graden, weergave) {
   if (graden == null || !Number.isFinite(Number(graden))) return null;
@@ -152,6 +182,8 @@ module.exports = {
   rangesNaarSectorIndexen,
   windrichtingNaarSectorStanden,
   sectorStandenNaarWindrichting,
+  bereikSectorenMetKlokMee,
+  pasBereikToeOpStanden,
   formatWindrichting,
   formatRanges,
   formatWindrichtingSamenvatting,

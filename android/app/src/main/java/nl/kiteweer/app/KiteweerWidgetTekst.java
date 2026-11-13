@@ -159,4 +159,51 @@ final class KiteweerWidgetTekst {
         if (uur < 0 || uur > 23 || minuut < 0 || minuut > 59) return -1f;
         return uur + minuut / 60f;
     }
+
+    /** Of `graden` binnen [start, eind] valt (wikkelt over 0°/360°; >= 360° is altijd waar). */
+    static boolean inGradenBereik(double graden, double start, double eind) {
+        if (Math.abs(eind - start) >= 360.0) return true;
+        double g = ((graden % 360.0) + 360.0) % 360.0;
+        double s = ((start % 360.0) + 360.0) % 360.0;
+        double e = ((eind % 360.0) + 360.0) % 360.0;
+        return s <= e ? (g >= s && g <= e) : (g >= s || g <= e);
+    }
+
+    /** Zet `spotWindrichting` ({ besteRanges, acceptabeleRanges }) om naar 16 standen (0/1/2). */
+    static int[] sectorStanden(JSONObject spotWindrichting) {
+        int[] standen = new int[16];
+        if (spotWindrichting == null) return standen;
+        vulStanden(standen, spotWindrichting.optJSONArray("acceptabeleRanges"), 2);
+        vulStanden(standen, spotWindrichting.optJSONArray("besteRanges"), 1);
+        return standen;
+    }
+
+    private static void vulStanden(int[] standen, JSONArray ranges, int stand) {
+        if (ranges == null) return;
+        for (int r = 0; r < ranges.length(); r++) {
+            JSONArray paar = ranges.optJSONArray(r);
+            if (paar == null || paar.length() < 2) continue;
+            double start = paar.optDouble(0, Double.NaN);
+            double eind = paar.optDouble(1, Double.NaN);
+            if (Double.isNaN(start) || Double.isNaN(eind)) continue;
+            for (int i = 0; i < 16; i++) {
+                if (inGradenBereik(i * 22.5, start, eind)) standen[i] = stand;
+            }
+        }
+    }
+
+    /**
+     * Kiest het moment voor het widget-kompas: het eerstvolgende goede moment (`volgendeKans`)
+     * als dat windrichting in graden en knopen heeft, anders vandaag (`data`).
+     */
+    static JSONObject kompasDoel(JSONObject data) {
+        if (data == null) return null;
+        JSONObject kans = data.optJSONObject("volgendeKans");
+        if (kans != null && kans.optBoolean("gevonden", false)
+                && !kans.isNull("windKnopen") && !kans.isNull("windrichtingGraden")) {
+            return kans;
+        }
+        if (!data.isNull("windKnopen") && !data.isNull("windrichtingGraden")) return data;
+        return null;
+    }
 }

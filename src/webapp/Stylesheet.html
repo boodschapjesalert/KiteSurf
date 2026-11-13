@@ -392,16 +392,26 @@
     100% { background-position: 0 50%; }
   }
 
-  /* Windrichting-editor: 16 kompasvakjes (tik = Niet -> Beste -> Matig) of graden-bereiken. */
+  /* Windrichting-editor: cirkelvormige kompasroos (bereik slecht/goed of los) of graden-bereiken. */
   .wr-uitleg { font-size: 13px; color: var(--hint); line-height: 1.5; margin: 0 0 10px; }
-  .wr-legenda { display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px; color: var(--hint); margin: 8px 0; }
+  .wr-legenda { display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px; color: var(--hint); margin: 8px 0; justify-content: center; }
   .wr-legenda span::before { content: ''; display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: middle; background: var(--sectie-bg); border: 1px solid var(--hint); }
+  .wr-legenda .l-uit::before { background: rgba(231, 76, 60, 0.25); border-color: var(--rood); }
   .wr-legenda .l-beste::before { background: var(--groen); border-color: var(--groen); }
   .wr-legenda .l-matig::before { background: var(--oranje); border-color: var(--oranje); }
-  .wr-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 8px 0; }
-  .wr-chip { padding: 12px 0; border-radius: 10px; border: 2px solid var(--hint); background: var(--sectie-bg); color: var(--tekst); font-weight: 600; font-size: 14px; cursor: pointer; text-align: center; }
-  .wr-chip.stand-1 { background: var(--groen); border-color: var(--groen); color: #fff; }
-  .wr-chip.stand-2 { background: var(--oranje); border-color: var(--oranje); color: #fff; }
+  .wr-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+  .wr-tab { flex: 1 1 auto; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--hint); background: var(--sectie-bg); color: var(--tekst); font-size: 12px; font-weight: 600; cursor: pointer; text-align: center; }
+  .wr-tab.actief { background: var(--knop-bg); border-color: var(--knop-bg); color: var(--knop-tekst); }
+  .wr-roos-wrap { display: flex; flex-direction: column; align-items: center; margin: 6px 0; }
+  .wr-roos { width: 250px; height: 250px; max-width: 100%; touch-action: manipulation; user-select: none; }
+  .wr-taart { cursor: pointer; stroke: var(--bg); stroke-width: 2; transition: opacity 0.12s; }
+  .wr-taart.stand-0 { fill: rgba(231, 76, 60, 0.28); }
+  .wr-taart.stand-1 { fill: var(--groen); }
+  .wr-taart.stand-2 { fill: var(--oranje); }
+  .wr-taart.start-punt { stroke: var(--knop-bg); stroke-width: 3.5; }
+  .wr-taart-label { font-size: 10px; font-weight: 700; fill: var(--tekst); pointer-events: none; text-anchor: middle; dominant-baseline: central; }
+  .wr-taart-label.licht { fill: #fff; }
+  .wr-roos-hint { font-size: 13px; font-weight: 600; color: var(--knop-bg); min-height: 20px; text-align: center; margin: 4px 0; }
   .wr-samenvatting { font-size: 13px; padding: 8px 10px; border-radius: 8px; background: var(--sectie-bg); margin: 8px 0; }
   .wr-modus { background: none; border: none; color: var(--knop-bg); padding: 4px 0; font-size: 13px; text-decoration: underline; cursor: pointer; }
   .wr-bereik { display: flex; align-items: center; gap: 6px; margin: 6px 0; font-size: 14px; }
@@ -409,4 +419,6 @@
   .wr-preset { margin: 6px 0 10px; }
   .wr-spotrij { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; border-bottom: 1px solid rgba(128, 128, 128, 0.25); font-size: 14px; }
   .wr-spotrij small { display: block; color: var(--hint); font-size: 12px; }
+  .dagkaart-kompas { display: inline-flex; align-items: center; vertical-align: middle; margin-right: 4px; }
+  .dagkaart-kompas svg { width: 46px; height: 46px; display: block; }
 </style>

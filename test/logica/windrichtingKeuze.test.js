@@ -5,6 +5,8 @@ const {
   rangesNaarSectorIndexen,
   windrichtingNaarSectorStanden,
   sectorStandenNaarWindrichting,
+  bereikSectorenMetKlokMee,
+  pasBereikToeOpStanden,
   formatWindrichting,
   formatRanges,
   formatWindrichtingSamenvatting,
@@ -133,5 +135,25 @@ describe('profiel: windrichtingWeergave en spot-update', () => {
     const p = standaardProfiel('x');
     assert.equal(updateFavorieteLocatieWindrichting(p, 'bestaat-niet', {}).fouten.length, 1);
     assert.equal(updateFavorieteLocatieWindrichting(p, 'rockanje-sportstrand', { besteRanges: [['a', 1]] }).profiel.favorieteLocaties[0].windrichting.besteRanges.length, 0);
+  });
+});
+
+describe('windrichtingKeuze: bereik kiezen (slecht of goed)', () => {
+  it('bereikSectorenMetKlokMee wikkelt netjes over noord heen', () => {
+    assert.deepEqual(bereikSectorenMetKlokMee(14, 1), [14, 15, 0, 1]);
+    assert.deepEqual(bereikSectorenMetKlokMee(4, 4), [4]);
+  });
+
+  it('slechte windrichting kiezen maakt dat bereik uit en de rest groen', () => {
+    const standen = pasBereikToeOpStanden(new Array(16).fill(0), 1, 7, 'slecht');
+    assert.equal(standen[4], 0); // O uit
+    assert.equal(standen[10], SECTOR_BESTE); // ZW groen
+    assert.equal(standen[0], SECTOR_BESTE); // N groen
+  });
+
+  it('goede windrichting kiezen maakt alleen dat bereik groen', () => {
+    const standen = pasBereikToeOpStanden(new Array(16).fill(1), 9, 14, 'goed');
+    assert.equal(standen[10], SECTOR_BESTE);
+    assert.equal(standen[4], 0);
   });
 });

@@ -610,6 +610,50 @@
   }
 
   /**
+   * Compact windkompas bij een dag- of kans-oordeel: toont de 16 windrichtingen van de spot
+   * (groen = beste, oranje = matig, rood-grijs = slecht/aflandig), een pijl uit de richting waar
+   * de wind vandaan komt, en in het midden de windsnelheid in knopen (`kn`).
+   */
+  function bouwWindKompasSvg(ruw, spotWindrichting) {
+    if (!ruw || ruw.windKnopen == null || ruw.windrichtingGraden == null) return '';
+    var standen = windrichtingLogica.windrichtingNaarSectorStanden(spotWindrichting || {});
+    var kn = Math.round(ruw.windKnopen);
+    var richtingTekst = toonWindrichting(ruw.windrichtingGraden) || '';
+    var paden = [];
+    for (var i = 0; i < 16; i++) {
+      var a1 = (i * 22.5 - 11.25 - 90) * Math.PI / 180;
+      var a2 = (i * 22.5 + 11.25 - 90) * Math.PI / 180;
+      var x1o = (26 + 23 * Math.cos(a1)).toFixed(1);
+      var y1o = (26 + 23 * Math.sin(a1)).toFixed(1);
+      var x2o = (26 + 23 * Math.cos(a2)).toFixed(1);
+      var y2o = (26 + 23 * Math.sin(a2)).toFixed(1);
+      var x2i = (26 + 15.5 * Math.cos(a2)).toFixed(1);
+      var y2i = (26 + 15.5 * Math.sin(a2)).toFixed(1);
+      var x1i = (26 + 15.5 * Math.cos(a1)).toFixed(1);
+      var y1i = (26 + 15.5 * Math.sin(a1)).toFixed(1);
+      var kleur = standen[i] === 1 ? '#2ecc71' : standen[i] === 2 ? '#f5a623' : 'rgba(231,76,60,0.28)';
+      paden.push(
+        '<path d="M' + x1o + ' ' + y1o + ' A23 23 0 0 1 ' + x2o + ' ' + y2o +
+        ' L' + x2i + ' ' + y2i + ' A15.5 15.5 0 0 0 ' + x1i + ' ' + y1i +
+        ' Z" fill="' + kleur + '" stroke="var(--bg)" stroke-width="0.8"/>'
+      );
+    }
+    var g = Number(ruw.windrichtingGraden);
+    var pijl = '<g transform="rotate(' + g + ' 26 26)">' +
+      '<polygon points="26,13.5 22.5,3 29.5,3" fill="var(--tekst)" stroke="var(--bg)" stroke-width="0.8"/>' +
+      '</g>';
+    var titel = 'Windkompas: ' + kn + ' kn' + (richtingTekst ? ' uit ' + richtingTekst : '');
+    return (
+      '<span class="dagkaart-kompas" title="' + titel.replace(/"/g, '&quot;') + '">' +
+      '<svg viewBox="0 0 52 52" aria-label="' + titel.replace(/"/g, '&quot;') + '">' +
+      paden.join('') + pijl +
+      '<text x="26" y="25" text-anchor="middle" dominant-baseline="central" font-size="11.5" font-weight="700" fill="var(--tekst)">' + kn + '</text>' +
+      '<text x="26" y="34" text-anchor="middle" dominant-baseline="central" font-size="7" font-weight="600" fill="var(--hint)">kn</text>' +
+      '</svg></span>'
+    );
+  }
+
+  /**
    * Directe visuele weergave van het getij (los van de voorkeur-evaluatie in evaluaties.getij,
    * die zonder ingestelde voorkeur altijd "geen-voorkeur" toont): de feitelijke hoog/laag-status
    * plus waterstand in cm, altijd zichtbaar zolang RWS-getijdata beschikbaar is voor deze locatie.
@@ -725,6 +769,7 @@
       var metaRij = document.createElement('div');
       metaRij.className = 'dagkaart-meta';
       metaRij.innerHTML =
+        bouwWindKompasSvg(besteUurRuw, huidigeLocatie && huidigeLocatie.windrichting) +
         bouwWindBadgeHtml(besteUurRuw) +
         bouwWeerBadgeHtml(besteUurRuw) +
         bouwGetijBadgeHtml(besteUurRuw) +
@@ -2159,6 +2204,8 @@
     var standen = windrichtingLogica.windrichtingNaarSectorStanden(origineel);
     var bereiken = { beste: wrKopieerRanges(origineel.besteRanges), matig: wrKopieerRanges(origineel.acceptabeleRanges) };
     var gewijzigd = false;
+    var actieModus = 'slecht'; // 'slecht' (bereik markeren als ongeschikt) | 'goed' (bereik) | 'los' (per richting)
+    var bereikStart = null;
     var samenvattingEl = null;
 
     // Huidige keuze als `windrichting` (of { fout }). Onaangeraakt blijft de opgeslagen waarde exact
@@ -2239,20 +2286,88 @@
       }
 
       if (modus === 'kompas') {
-        wrapper.appendChild(wrEl('p', 'wr-uitleg', 'Tik op een richting om te wisselen: niet geschikt → beste → matig.'));
-        var grid = wrEl('div', 'wr-grid');
-        KOMPAS_PUNTEN.forEach(function (naam, i) {
-          var chip = wrEl('button', 'wr-chip stand-' + standen[i], naam);
-          chip.type = 'button';
-          chip.onclick = function () {
-            standen[i] = (standen[i] + 1) % 3;
-            gewijzigd = true;
-            chip.className = 'wr-chip stand-' + standen[i];
-            werkSamenvattingBij();
+        var tabs = wrEl('div', 'wr-tabs');
+        [
+          ['slecht', '❌ Slechte wind'],
+          ['goed', '✅ Goede wind'],
+          ['los', '🎨 Per richting'],
+        ].forEach(function (t) {
+          var knop = wrEl('button', 'wr-tab' + (actieModus === t[0] ? ' actief' : ''), t[1]);
+          knop.type = 'button';
+          knop.onclick = function () {
+            actieModus = t[0];
+            bereikStart = null;
+            render();
           };
-          grid.appendChild(chip);
+          tabs.appendChild(knop);
         });
-        wrapper.appendChild(grid);
+        wrapper.appendChild(tabs);
+
+        var hintTekst = actieModus === 'slecht'
+          ? (bereikStart != null
+            ? 'Start: ' + KOMPAS_PUNTEN[bereikStart] + ' — tik nu de eindrichting van de slechte wind (met de klok mee).'
+            : 'Tik begin en eind van de slechte (aflandige) wind — de rest wordt automatisch groen.')
+          : actieModus === 'goed'
+            ? (bereikStart != null
+              ? 'Start: ' + KOMPAS_PUNTEN[bereikStart] + ' — tik nu de eindrichting van het goede bereik (met de klok mee).'
+              : 'Tik begin en eind van het goede bereik (met de klok mee).')
+            : 'Tik op een losse richting om bij te stellen: slecht → beste → matig.';
+
+        var roosWrap = wrEl('div', 'wr-roos-wrap');
+        var svgNs = 'http://www.w3.org/2000/svg';
+        var svg = document.createElementNS(svgNs, 'svg');
+        svg.setAttribute('class', 'wr-roos');
+        svg.setAttribute('viewBox', '0 0 260 260');
+        var cx = 130, cy = 130, rUit = 114, rIn = 42, rLabel = 82;
+        KOMPAS_PUNTEN.forEach(function (naam, i) {
+          var a1 = (i * 22.5 - 11.25 - 90) * Math.PI / 180;
+          var a2 = (i * 22.5 + 11.25 - 90) * Math.PI / 180;
+          var am = (i * 22.5 - 90) * Math.PI / 180;
+          var d = [
+            'M', (cx + rUit * Math.cos(a1)).toFixed(1), (cy + rUit * Math.sin(a1)).toFixed(1),
+            'A', rUit, rUit, 0, 0, 1, (cx + rUit * Math.cos(a2)).toFixed(1), (cy + rUit * Math.sin(a2)).toFixed(1),
+            'L', (cx + rIn * Math.cos(a2)).toFixed(1), (cy + rIn * Math.sin(a2)).toFixed(1),
+            'A', rIn, rIn, 0, 0, 0, (cx + rIn * Math.cos(a1)).toFixed(1), (cy + rIn * Math.sin(a1)).toFixed(1),
+            'Z',
+          ].join(' ');
+          var pad = document.createElementNS(svgNs, 'path');
+          pad.setAttribute('d', d);
+          pad.setAttribute('class', 'wr-taart stand-' + standen[i] + (bereikStart === i ? ' start-punt' : ''));
+          pad.onclick = function () {
+            if (actieModus === 'los') {
+              standen[i] = (standen[i] + 1) % 3;
+              gewijzigd = true;
+              render();
+              return;
+            }
+            if (bereikStart === null) {
+              bereikStart = i;
+              render();
+            } else {
+              standen = windrichtingLogica.pasBereikToeOpStanden(standen, bereikStart, i, actieModus);
+              bereikStart = null;
+              gewijzigd = true;
+              render();
+            }
+          };
+          svg.appendChild(pad);
+          var lbl = document.createElementNS(svgNs, 'text');
+          lbl.setAttribute('x', (cx + rLabel * Math.cos(am)).toFixed(1));
+          lbl.setAttribute('y', (cy + rLabel * Math.sin(am)).toFixed(1));
+          lbl.setAttribute('class', 'wr-taart-label' + (standen[i] > 0 ? ' licht' : ''));
+          lbl.textContent = naam;
+          svg.appendChild(lbl);
+        });
+        var midden = document.createElementNS(svgNs, 'text');
+        midden.setAttribute('x', cx);
+        midden.setAttribute('y', cy);
+        midden.setAttribute('class', 'wr-taart-label');
+        midden.textContent = actieModus === 'slecht' ? 'Aflandig' : actieModus === 'goed' ? 'Bereik' : 'Los';
+        svg.appendChild(midden);
+        roosWrap.appendChild(svg);
+        roosWrap.appendChild(wrEl('div', 'wr-roos-hint', hintTekst));
+        wrapper.appendChild(roosWrap);
+
         var legenda = wrEl('div', 'wr-legenda');
         legenda.appendChild(wrEl('span', 'l-uit', 'Niet geschikt'));
         legenda.appendChild(wrEl('span', 'l-beste', 'Beste'));

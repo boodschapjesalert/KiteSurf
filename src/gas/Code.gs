@@ -11,7 +11,7 @@
 // Handmatig ophogen bij elke betekenisvolle wijziging/deploy — zichtbaar onderin de app, zodat
 // eenvoudig te controleren is of een nieuwe versie daadwerkelijk live staat (i.p.v. een gecachete
 // oudere versie in de browser).
-var KITEWEER_VERSIE = 'v102 (13 nov 2026)';
+var KITEWEER_VERSIE = 'v103 (13 nov 2026)';
 
 /**
  * Verkort een URL via TinyURL's geauthenticeerde API (eigen account + API-token in Script
@@ -299,6 +299,7 @@ function bouwWidgetData_(profiel, locatie, grafiekVoorGebruikerId) {
         verdict: verdictPerKleur[kansScore.kleur] || kansScore.kleur,
         windKnopen: ruwKans && ruwKans.windKnopen != null ? Math.round(ruwKans.windKnopen) : null,
         windrichtingKompas: kompasVan(ruwKans),
+        windrichtingGraden: ruwKans && ruwKans.windrichtingGraden != null ? Math.round(ruwKans.windrichtingGraden) : null,
         windvlaagKnopen: ruwKans && ruwKans.windvlaagKnopen != null ? Math.round(ruwKans.windvlaagKnopen) : null,
       };
       break;
@@ -306,6 +307,7 @@ function bouwWidgetData_(profiel, locatie, grafiekVoorGebruikerId) {
 
     return {
       spotnaam: locatie.naam,
+      spotWindrichting: locatie.windrichting || null,
       spotDatum: Utilities.formatDate(new Date(), 'Europe/Amsterdam', 'yyyy-MM-dd'),
       bijgewerkt: Utilities.formatDate(new Date(), 'Europe/Amsterdam', 'HH:mm'),
       // "Vandaag over de volle dag" — ongewijzigd t.o.v. eerdere versies van dit endpoint.
@@ -314,6 +316,7 @@ function bouwWidgetData_(profiel, locatie, grafiekVoorGebruikerId) {
       verdict: verdictPerKleur[dagScoreVandaag.kleur] || dagScoreVandaag.kleur,
       windKnopen: ruwVandaag && ruwVandaag.windKnopen != null ? Math.round(ruwVandaag.windKnopen) : null,
       windrichtingKompas: kompasVan(ruwVandaag),
+      windrichtingGraden: ruwVandaag && ruwVandaag.windrichtingGraden != null ? Math.round(ruwVandaag.windrichtingGraden) : null,
       windvlaagKnopen: ruwVandaag && ruwVandaag.windvlaagKnopen != null ? Math.round(ruwVandaag.windvlaagKnopen) : null,
       grafiekUrl: grafiekUrl,
       volgendeKans: volgendeKans,

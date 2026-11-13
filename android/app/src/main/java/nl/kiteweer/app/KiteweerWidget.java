@@ -195,6 +195,13 @@ public class KiteweerWidget extends AppWidgetProvider {
         String wind = KiteweerWidgetTekst.windTekst(data);
         v.setTextViewText(R.id.overzicht_wind, wind);
         v.setViewVisibility(R.id.overzicht_wind, wind.isEmpty() ? View.GONE : View.VISIBLE);
+        android.graphics.Bitmap kompasBmp = KiteweerKompas.teken(context, data, 58);
+        if (kompasBmp != null) {
+            v.setImageViewBitmap(R.id.overzicht_kompas, kompasBmp);
+            v.setViewVisibility(R.id.overzicht_kompas, View.VISIBLE);
+        } else {
+            v.setViewVisibility(R.id.overzicht_kompas, View.GONE);
+        }
         v.setTextViewText(R.id.overzicht_kans, KiteweerWidgetTekst.kansTekst(data.optJSONObject("volgendeKans")));
 
         // Oordeel per dag als chips (zoveel als er in de breedte passen, 3-5); tik = naar die dag.

@@ -79,6 +79,8 @@ function bouwWindrichtingScript() {
     '  formatWindrichtingSamenvatting: formatWindrichtingSamenvatting,\n' +
     '  windrichtingNaarSectorStanden: windrichtingNaarSectorStanden,\n' +
     '  sectorStandenNaarWindrichting: sectorStandenNaarWindrichting,\n' +
+    '  bereikSectorenMetKlokMee: bereikSectorenMetKlokMee,\n' +
+    '  pasBereikToeOpStanden: pasBereikToeOpStanden,\n' +
     '  zoekSpotPreset: zoekSpotPreset,\n' +
     '  SPOT_PRESETS: SPOT_PRESETS,\n' +
     '};\n})();'
